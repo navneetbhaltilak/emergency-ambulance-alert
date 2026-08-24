@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ambulance Alert - Citizen App</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            margin: 0; font-family: -apple-system, sans-serif;
+            background: #f4f5f7; min-height: 100vh;
+            display: flex; flex-direction: column; align-items: center;
+            padding: 24px; box-sizing: border-box;
+        }
+        h1 { font-size: 20px; margin-bottom: 4px; color: #1a1a2e; }
+        .subtitle { color: #777; font-size: 13px; margin-bottom: 24px; text-align: center; }
+
+        #setupCard {
+            background: white; border-radius: 14px; padding: 24px;
+            width: 100%; max-width: 340px; box-sizing: border-box;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08); text-align: center;
+        }
+        button {
+            background: #e63946; color: white; border: none;
+            padding: 14px 20px; border-radius: 10px; font-size: 16px;
+            font-weight: 600; cursor: pointer; width: 100%;
+        }
+
+        #liveCard {
+            display: none; width: 100%; max-width: 340px;
+            border-radius: 16px; padding: 28px; box-sizing: border-box;
+            text-align: center; transition: background 0.3s ease;
+        }
+        #liveCard.info { background: #fff3cd; }
+        #liveCard.high { background: #ffddb0; }
+        #liveCard.critical { background: #f8d7da; }
+        #liveCard.clear { background: #d4edda; }
+
+        .bigStat { font-size: 40px; font-weight: 800; margin: 8px 0; }
+        .levelLabel { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+        .smallNote { font-size: 12px; color: #555; margin-top: 12px; }
+
+        #idleState {
+            display: none; width: 100%; max-width: 340px;
+            text-align: center; color: #888; margin-top: 40px;
+        }
+        .checkmark { font-size: 48px; margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+    <h1>🚑 Ambulance Alert</h1>
+    <div class="subtitle">Get notified when an emergency ambulance is approaching your location</div>
+
+    <div id="setupCard">
+        <p style="font-size:14px; color:#555;">
+            Setting up ambulance alerts for your area...
+        </p>
+    </div>
+
+    <div id="liveCard">
+        <div class="levelLabel" id="levelLabel">Ambulance Approaching</div>
+        <div class="bigStat" id="distanceStat">-- km</div>
+        <div id="levelDescription">away</div>
+        <div class="smallNote" id="destinationNote"></div>
+    </div>
+
+    <div id="idleState">
+        <div class="checkmark">✅</div>
+        <div>No active ambulances nearby</div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
+
+        const API_BASE = "http://127.0.0.1:5000";
+        const USER_ID = 1; // for a real multi-user app, this would come from login/signup
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCCDoW8qZ70Wc6qw6WWgmH10Wl1KvZZWTA",
+            authDomain: "emergency-ambulance-alert.firebaseapp.com",
+            projectId: "emergency-ambulance-alert",
+            storageBucket: "emergency-ambulance-alert.firebasestorage.app",
+            messagingSenderId: "487464125337",
+            appId: "1:487464125337:web:d69f15c29f32921b1f4908"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const messaging = getMessaging(app);
+
+        let userLat = null;
+        let userLng = null;
+
+        async function initializeAlerts() {
+            try {
+                // 1. Notification permission + FCM token
+                const permission = await Notification.requestPermission();
+                if (permission !== "granted") {
+                    alert("Notification permission is required for alerts.");
+                    return;
+                }
+
+                const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+                await navigator.serviceWorker.ready;
+
+                const token = await getToken(messaging, {
+                    vapidKey: "BPWOIImb1JqzHCIHgBIVb766CVEJ2Ka457SHGhDK7d41IKoftXgWQUMokd1fYa9ofEWxT2_kX6mDeUI2jNFJbFU",
+                    serviceWorkerRegistration: registration
+                });
+
+                await fetch(`${API_BASE}/api/users/update-token`, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ user_id: USER_ID, fcm_token: token })
+                });
+
+                // 2. Location permission + continuous tracking
+                if (!navigator.geolocation) {
+                    alert("Geolocation not supported on this device.");
+                    return;
+                }
+
+                navigator.geolocation.watchPosition(async (pos) => {
+                    userLat = pos.coords.latitude;
+                    userLng = pos.coords.longitude;
+
+                    await fetch(`${API_BASE}/api/users/location`, {
+                        method: "PUT",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({ user_id: USER_ID, latitude: userLat, longitude: userLng })
+                    });
+                }, (err) => {
+                    console.error("Location error:", err);
+                }, { enableHighAccuracy: true, maximumAge: 5000 });
+
+                document.getElementById("setupCard").style.display = "none";
+                document.getElementById("idleState").style.display = "block";
+
+                } catch (err) {
+                    alert("Setup failed: " + err.message);
+                    console.error(err);
+                }
+            }
+
+            // Run automatically on page load 
+            initializeAlerts();
+
+        // 3. Live ambulance updates via SocketIO
+        const socket = io(API_BASE);
+
+        socket.on('ambulance_update', (data) => {
+            console.log("Received ambulance_update, userLat:", userLat, "userLng:", userLng);
+            if (userLat === null || userLng === null) return;
+
+            const distanceKm = haversineDistance(userLat, userLng, data.latitude, data.longitude);
+            updateLiveCard(distanceKm, data.destination);
+        });
+
+        socket.on('ambulance_ended', () => {
+            showIdleState();
+        });
+
+        function haversineDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) ** 2 +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) ** 2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        function updateLiveCard(distanceKm, destination) {
+            const card = document.getElementById("liveCard");
+            const idle = document.getElementById("idleState");
+            let level, label, desc;
+
+            if (distanceKm > 5) {
+                showIdleState();
+                return;
+            } else if (distanceKm <= 0.5) {
+                level = "critical"; label = "🔴 Give Way Now"; desc = "Ambulance very close";
+            } else if (distanceKm <= 2) {
+                level = "high"; label = "🚨 Prepare to Give Way"; desc = "Ambulance nearby";
+            } else {
+                level = "info"; label = "⚠️ Ambulance Approaching"; desc = "Stay alert";
+            }
+
+            card.className = level;
+            document.getElementById("levelLabel").innerText = label;
+            document.getElementById("distanceStat").innerText = distanceKm.toFixed(1) + " km";
+            document.getElementById("levelDescription").innerText = desc;
+            document.getElementById("destinationNote").innerText = destination ? `Heading to ${destination}` : "";
+
+            card.style.display = "block";
+            idle.style.display = "none";
+        }
+
+        function showIdleState() {
+            document.getElementById("liveCard").style.display = "none";
+            document.getElementById("idleState").style.display = "block";
+        }
+    </script>
+</body>
+</html>

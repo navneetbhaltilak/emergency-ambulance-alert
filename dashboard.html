@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ambulance Alert Dashboard</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; font-family: sans-serif; }
+        #map { height: 100vh; width: 100%; }
+        #status {
+            position: absolute; top: 10px; left: 50px; z-index: 1000;
+            background: white; padding: 8px 12px; border-radius: 6px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3); font-size: 14px;
+        }
+        #sidePanel {
+            position: absolute; top: 60px; left: 50px; z-index: 1000;
+            background: white; padding: 12px 16px; border-radius: 6px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3); font-size: 13px;
+            max-width: 250px; display: none;
+        }
+        #sidePanel h4 { margin: 0 0 8px 0; }
+        #sidePanel p { margin: 4px 0; }
+    </style>
+</head>
+<body>
+    <div id="status">Loading ambulances...</div>
+    <div id="sidePanel"></div>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        const API_BASE = "http://127.0.0.1:5000";
+
+        // Center map on your test area (Yavatmal coordinates)
+        const map = L.map('map').setView([20.3897, 78.1274], 14);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        let ambulanceMarkers = {};
+        let ambulanceCircles = {};
+
+        const socket = io(API_BASE);
+
+        socket.on('connect', () => {
+            console.log("Connected to live server");
+        });
+
+        socket.on('ambulance_update', (data) => {
+            updateAmbulance(data);
+            document.getElementById('status').innerText = `1 ambulance(s) active`;
+        });
+
+        socket.on('ambulance_ended', (data) => {
+            console.log("Received ambulance_ended event:", data);
+            removeAmbulance(data.ambulance_id);
+            document.getElementById('status').innerText = "No active ambulances";
+        });
+        async function loadInitialAmbulances() {
+            try {
+                const response = await fetch(`${API_BASE}/api/dashboard/active`);
+                const data = await response.json();
+                data.forEach(amb => updateAmbulance(amb));
+                document.getElementById('status').innerText =
+                    data.length > 0 ? `${data.length} ambulance(s) active` : "No active ambulances";
+            } catch (err) {
+                console.error("Initial load failed:", err);
+            }
+        }
+
+        loadInitialAmbulances();
+
+        function updateAmbulance(amb) {
+        const latlng = [amb.latitude, amb.longitude];
+
+        if (ambulanceMarkers[amb.ambulance_id]) {
+            ambulanceMarkers[amb.ambulance_id].setLatLng(latlng);
+            ambulanceCircles[amb.ambulance_id].forEach(c => c.setLatLng(latlng));
+        } else {
+            const marker = L.marker(latlng).addTo(map)
+                .bindPopup(`${amb.ambulance_id}<br>Speed: ${amb.speed || 0} km/h`);
+
+            const circleCritical = L.circle(latlng, {
+                radius: 500, color: 'darkred', fillColor: '#900', fillOpacity: 0.25
+            }).addTo(map);
+            const circleHigh = L.circle(latlng, {
+                radius: 2000, color: 'orange', fillColor: '#f80', fillOpacity: 0.12
+            }).addTo(map);
+            const circleInfo = L.circle(latlng, {
+                radius: 5000, color: 'gold', fillColor: '#ff0', fillOpacity: 0.05
+            }).addTo(map);
+
+            ambulanceMarkers[amb.ambulance_id] = marker;
+            ambulanceCircles[amb.ambulance_id] = [circleCritical, circleHigh, circleInfo];
+        }
+
+        updateSidePanel(amb);
+    }
+
+    function removeAmbulance(ambulanceId) {
+        if (ambulanceMarkers[ambulanceId]) {
+            map.removeLayer(ambulanceMarkers[ambulanceId]);
+            ambulanceCircles[ambulanceId].forEach(c => map.removeLayer(c));
+            delete ambulanceMarkers[ambulanceId];
+            delete ambulanceCircles[ambulanceId];
+        }
+        document.getElementById('sidePanel').style.display = "none";
+    }
+
+    function updateSidePanel(amb) {
+        const panel = document.getElementById('sidePanel');
+        panel.style.display = "block";
+        panel.innerHTML = `
+            <h4>${amb.ambulance_id}</h4>
+            <p><b>Speed:</b> ${amb.speed || 0} km/h</p>
+            <p><b>Users alerted (this ping):</b> ${amb.alerted_count || 0}</p>
+        `;
+    }
+
+    </script>
+</body>
+</html>

@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+#files to be ignored while pushing project to git hub
+firebase-service-account.json
+*firebase-adminsdk*.json
+.env

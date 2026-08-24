@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ambulance Driver App</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            margin: 0; font-family: -apple-system, sans-serif;
+            background: #1a1a2e; color: white; min-height: 100vh;
+            display: flex; flex-direction: column; align-items: center;
+            padding: 24px; box-sizing: border-box;
+        }
+        h1 { font-size: 20px; margin-bottom: 4px; }
+        .subtitle { color: #aaa; font-size: 13px; margin-bottom: 32px; }
+        input, select {
+            width: 100%; max-width: 320px; padding: 14px; margin-bottom: 12px;
+            border-radius: 10px; border: none; font-size: 16px; box-sizing: border-box;
+        }
+        button {
+            width: 100%; max-width: 320px; padding: 16px; border: none;
+            border-radius: 10px; font-size: 17px; font-weight: 600;
+            cursor: pointer; margin-top: 12px;
+        }
+        #startBtn { background: #e63946; color: white; }
+        #endBtn { background: #444; color: white; display: none; }
+        #statusCard {
+            margin-top: 32px; padding: 20px; border-radius: 14px;
+            background: #16213e; width: 100%; max-width: 320px;
+            box-sizing: border-box; text-align: center;
+        }
+        .pulse {
+            width: 14px; height: 14px; border-radius: 50%;
+            background: #2ecc71; display: inline-block; margin-right: 8px;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; }
+        }
+        .stat { font-size: 28px; font-weight: 700; margin: 8px 0; }
+        .label { font-size: 12px; color: #aaa; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <h1>🚑 Ambulance Driver</h1>
+    <div class="subtitle">Real-time emergency location broadcast</div>
+
+    <input type="text" id="ambulanceId" placeholder="Ambulance ID (e.g. AMB001)" value="AMB001">
+    <input type="text" id="destination" placeholder="Destination (optional)">
+
+    <button id="startBtn">🔴 Start Emergency</button>
+    <button id="endBtn">⬛ End Emergency</button>
+
+    <div id="statusCard" style="display:none;">
+        <div><span class="pulse"></span>Broadcasting live location</div>
+        <div class="stat" id="speedStat">0 km/h</div>
+        <div class="label">Current Speed</div>
+        <div class="stat" id="alertStat">0</div>
+        <div class="label">Users Alerted (Last Ping)</div>
+        <div class="label" style="margin-top:12px;" id="pingCount">0 location updates sent</div>
+    </div>
+
+    <script>
+        const API_BASE = "http://127.0.0.1:5000";
+        let watchId = null;
+        let pingCounter = 0;
+        let lastPosition = null;
+
+        document.getElementById("startBtn").onclick = async () => {
+            const ambulanceId = document.getElementById("ambulanceId").value.trim();
+            const destination = document.getElementById("destination").value.trim();
+
+            if (!ambulanceId) { alert("Enter an ambulance ID"); return; }
+            if (!navigator.geolocation) { alert("Geolocation not supported on this device"); return; }
+
+            // Ask for current position first, to use as destination-routing origin if needed
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                try {
+                    const body = { ambulance_id: ambulanceId };
+                    if (destination) {
+                        body.destination = destination;
+                        // NOTE: for real destination routing you'd geocode the address to lat/lng.
+                        // For now this starts the emergency; route requires destination_lat/lng too.
+                    }
+
+                    const resp = await fetch(`${API_BASE}/api/ambulance/emergency/start`, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify(body)
+                    });
+                    const data = await resp.json();
+                    console.log("Emergency started:", data);
+
+                    document.getElementById("startBtn").style.display = "none";
+                    document.getElementById("endBtn").style.display = "block";
+                    document.getElementById("statusCard").style.display = "block";
+
+                    startTracking(ambulanceId);
+                } catch (err) {
+                    alert("Failed to start emergency: " + err.message);
+                }
+            }, (err) => {
+                alert("Location permission is required to start an emergency.");
+            });
+        };
+
+        document.getElementById("endBtn").onclick = async () => {
+            const ambulanceId = document.getElementById("ambulanceId").value.trim();
+
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+
+            try {
+                await fetch(`${API_BASE}/api/ambulance/emergency/end`, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ ambulance_id: ambulanceId })
+                });
+            } catch (err) {
+                console.error(err);
+            }
+
+            document.getElementById("startBtn").style.display = "block";
+            document.getElementById("endBtn").style.display = "none";
+            document.getElementById("statusCard").style.display = "none";
+            pingCounter = 0;
+        };
+
+        function startTracking(ambulanceId) {
+            watchId = navigator.geolocation.watchPosition(async (pos) => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                console.log("RAW GPS reading:", lat, lng, "accuracy:", pos.coords.accuracy, "meters");
+                const speedMs = pos.coords.speed;
+                const speedKmh = speedMs ? Math.round(speedMs * 3.6) : 0;
+
+                try {
+                    const resp = await fetch(`${API_BASE}/api/ambulance/location`, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({
+                            ambulance_id: ambulanceId,
+                            latitude: lat,
+                            longitude: lng,
+                            speed: speedKmh
+                        })
+                    });
+                    const data = await resp.json();
+
+                    pingCounter++;
+                    document.getElementById("speedStat").innerText = `${speedKmh} km/h`;
+                    document.getElementById("alertStat").innerText = data.notified ?? 0;
+                    document.getElementById("pingCount").innerText = `${pingCounter} location updates sent`;
+                } catch (err) {
+                    console.error("Failed to send location:", err);
+                }
+            }, (err) => {
+                console.error("Geolocation error:", err);
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 10000
+            });
+        }
+    </script>
+</body>
+</html>

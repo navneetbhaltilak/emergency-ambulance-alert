@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head><title>FCM Token Test</title></head>
+<body>
+  <h2>Getting your FCM token...</h2>
+  <p id="tokenDisplay">Waiting for permission...</p>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyCCDoW8qZ70Wc6qw6WWgmH10Wl1KvZZWTA",
+        authDomain: "emergency-ambulance-alert.firebaseapp.com",
+        projectId: "emergency-ambulance-alert",
+        storageBucket: "emergency-ambulance-alert.firebasestorage.app",
+        messagingSenderId: "487464125337",
+        appId: "1:487464125337:web:d69f15c29f32921b1f4908",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const messaging = getMessaging(app);
+
+    async function run() {
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission !== "granted") {
+          document.getElementById("tokenDisplay").innerText = "Permission denied. Please allow notifications.";
+          return;
+        }
+
+        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        await navigator.serviceWorker.ready;
+
+        const token = await getToken(messaging, {
+          vapidKey: "BPWOIImb1JqzHCIHgBIVb766CVEJ2Ka457SHGhDK7d41IKoftXgWQUMokd1fYa9ofEWxT2_kX6mDeUI2jNFJbFU",
+          serviceWorkerRegistration: registration
+        });
+
+        document.getElementById("tokenDisplay").innerText = token;
+        console.log("FCM Token:", token);
+
+        // Automatically sync this token with the backend every time the page loads
+        await fetch("http://127.0.0.1:5000/api/users/update-token", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ user_id: 1, fcm_token: token })
+        });
+        console.log("Token synced with backend");
+
+      } catch (err) {
+        document.getElementById("tokenDisplay").innerText = "Error: " + err.message;
+        console.error(err);
+      }
+    }
+
+    onMessage(messaging, (payload) => {
+      console.log("Message received in foreground:", payload);
+      // removed this beacause of redundant popup - alert(`${payload.notification.title}\n${payload.notification.body}`);
+    });
+
+    run();
+  </script>
+</body>
+</html>
