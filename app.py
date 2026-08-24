@@ -16,7 +16,11 @@ import math
 app = Flask(__name__)
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
-cred = credentials.Certificate("firebase-service-account.json")
+firebase_creds_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
+if firebase_creds_json:
+    cred = credentials.Certificate(json.loads(firebase_creds_json))
+else:
+    cred = credentials.Certificate("firebase-service-account.json")
 firebase_admin.initialize_app(cred)
 def get_db():
     max_retries = 3
