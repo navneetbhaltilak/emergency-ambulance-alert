@@ -133,6 +133,10 @@
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
                 console.log("RAW GPS reading:", lat, lng, "accuracy:", pos.coords.accuracy, "meters");
+                if (pos.coords.accuracy > 5000) {
+                   console.log("Skipping low-accuracy reading (>5km uncertain)");
+                   return;
+                }
                 const speedMs = pos.coords.speed;
                 const speedKmh = speedMs ? Math.round(speedMs * 3.6) : 0;
 
