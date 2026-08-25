@@ -95,7 +95,7 @@
                     document.getElementById("endBtn").style.display = "block";
                     document.getElementById("statusCard").style.display = "block";
 
-                    startTracking(ambulanceId);
+                    setTimeout(() => startTracking(ambulanceId), 2000);
                 } catch (err) {
                     alert("Failed to start emergency: " + err.message);
                 }
