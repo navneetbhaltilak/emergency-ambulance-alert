@@ -331,7 +331,8 @@ def ambulance_location_ping():
 
         try:
             status_str = send_fcm_notification(user["fcm_token"], ambulance_id, user["distance_km"], new_level)
-        except Exception:
+        except Exception as e:
+            print(f"FCM send failed: {e}")
             status_str = "failed"
         cur.execute("""
             INSERT INTO notifications (event_id, user_id, distance_km, alert_level, status)
@@ -344,7 +345,8 @@ def ambulance_location_ping():
     for user in standdown_users:
         try:
             status_str = send_fcm_notification(user["fcm_token"], ambulance_id, None, "clear")
-        except Exception:
+        except Exception as e:
+            print(f"FCM send failed: {e}")
             status_str = "failed"
         cur.execute("""
             INSERT INTO notifications (event_id, user_id, distance_km, alert_level, status)
