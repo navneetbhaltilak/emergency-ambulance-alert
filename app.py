@@ -376,7 +376,7 @@ def end_emergency():
         UPDATE emergency_events SET status = 'ended', end_time = NOW()
         WHERE ambulance_id = %s AND status = 'active'
     """, (ambulance_id,))
-    socketio.emit("emergency_ended", {"ambulance_id": ambulance_id})
+    socketio.emit("ambulance_ended", {"ambulance_id": ambulance_id})
     conn.commit()
     cur.close()
     conn.close()
