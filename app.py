@@ -366,6 +366,18 @@ def ambulance_location_ping():
     cur.close()
     conn.close()
     return jsonify({"notified": notified_count}), 200
+@app.route("/api/ambulance/status/<ambulance_id>", methods=["GET"])
+def get_ambulance_status(ambulance_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT status FROM ambulances WHERE ambulance_id = %s", (ambulance_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if row is None:
+        return jsonify({"status": "not_found"}), 404
+    return jsonify({"status": row["status"]}), 200
 @app.route("/api/ambulance/emergency/end", methods=["POST"])
 def end_emergency():
     data = request.json

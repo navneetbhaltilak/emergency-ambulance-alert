@@ -66,6 +66,25 @@
         let pingCounter = 0;
         let lastPosition = null;
 
+        async function checkExistingEmergency() {
+            const ambulanceId = document.getElementById("ambulanceId").value.trim();
+            if (!ambulanceId) return;
+
+            try {
+                const resp = await fetch(`${API_BASE}/api/ambulance/status/${ambulanceId}`);
+                const data = await resp.json();
+
+                if (data.status === "emergency") {
+                    document.getElementById("startBtn").style.display = "none";
+                    document.getElementById("endBtn").style.display = "block";
+                    document.getElementById("statusCard").style.display = "block";
+                    startTracking(ambulanceId);
+                }
+            } catch (err) {
+                console.error("Failed to check existing status:", err);
+            }
+        }
+
         document.getElementById("startBtn").onclick = async () => {
             const ambulanceId = document.getElementById("ambulanceId").value.trim();
             const destination = document.getElementById("destination").value.trim();
@@ -168,6 +187,8 @@
                 timeout: 10000
             });
         }
+        checkExistingEmergency();
+        document.getElementById("ambulanceId").addEventListener("change", checkExistingEmergency);
     </script>
 </body>
 </html>
