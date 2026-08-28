@@ -126,11 +126,10 @@
         document.getElementById("endBtn").onclick = async () => {
             const ambulanceId = document.getElementById("ambulanceId").value.trim();
 
-            if (watchId !== null) {
-                navigator.geolocation.clearWatch(watchId);
-                watchId = null;
+            if (trackingInterval !== null) {
+                clearInterval(trackingInterval);
+                trackingInterval = null;
             }
-
             try {
                 await fetch(`${API_BASE}/api/ambulance/emergency/end`, {
                     method: "POST",
@@ -147,46 +146,55 @@
             pingCounter = 0;
         };
 
+        let trackingInterval = null;
+
         function startTracking(ambulanceId) {
-            watchId = navigator.geolocation.watchPosition(async (pos) => {
-                const lat = pos.coords.latitude;
-                const lng = pos.coords.longitude;
-                console.log("RAW GPS reading:", lat, lng, "accuracy:", pos.coords.accuracy, "meters");
-                if (pos.coords.accuracy > 5000) {
-                   console.log("Skipping low-accuracy reading (>5km uncertain)");
-                   return;
-                }
-                const speedMs = pos.coords.speed;
-                const speedKmh = speedMs ? Math.round(speedMs * 3.6) : 0;
+            async function pingLocation() {
+                navigator.geolocation.getCurrentPosition(async (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    console.log("RAW GPS reading:", lat, lng, "accuracy:", pos.coords.accuracy, "meters");
 
-                try {
-                    const resp = await fetch(`${API_BASE}/api/ambulance/location`, {
-                        method: "POST",
-                        headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify({
-                            ambulance_id: ambulanceId,
-                            latitude: lat,
-                            longitude: lng,
-                            speed: speedKmh
-                        })
-                    });
-                    const data = await resp.json();
+                    if (pos.coords.accuracy > 5000) {
+                        console.log("Skipping low-accuracy reading (>5km uncertain)");
+                        return;
+                    }
 
-                    pingCounter++;
-                    document.getElementById("speedStat").innerText = `${speedKmh} km/h`;
-                    document.getElementById("alertStat").innerText = data.notified ?? 0;
-                    document.getElementById("pingCount").innerText = `${pingCounter} location updates sent`;
-                } catch (err) {
-                    console.error("Failed to send location:", err);
-                }
-            }, (err) => {
-                console.error("Geolocation error:", err);
-            }, {
-                enableHighAccuracy: true,
-                maximumAge: 0,
-                timeout: 10000
-            });
-        }
+                    const speedMs = pos.coords.speed;
+                    const speedKmh = speedMs ? Math.round(speedMs * 3.6) : 0;
+
+                    try {
+                        const resp = await fetch(`${API_BASE}/api/ambulance/location`, {
+                            method: "POST",
+                            headers: {"Content-Type": "application/json"},
+                            body: JSON.stringify({
+                                ambulance_id: ambulanceId,
+                                latitude: lat,
+                                longitude: lng,
+                                speed: speedKmh
+                            })
+                        });
+                        const data = await resp.json();
+
+                        pingCounter++;
+                        document.getElementById("speedStat").innerText = `${speedKmh} km/h`;
+                        document.getElementById("alertStat").innerText = data.notified ?? 0;
+                        document.getElementById("pingCount").innerText = `${pingCounter} location updates sent`;
+                    } catch (err) {
+                        console.error("Failed to send location:", err);
+                    }
+                }, (err) => {
+                    console.error("Geolocation error:", err);
+                }, {
+                    enableHighAccuracy: true,
+                    maximumAge: 0,
+                    timeout: 10000
+                });
+            }
+
+    pingLocation(); // first ping immediately
+    trackingInterval = setInterval(pingLocation, 5000); // then every 5 seconds
+}
         checkExistingEmergency();
         document.getElementById("ambulanceId").addEventListener("change", checkExistingEmergency);
     </script>
