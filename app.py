@@ -9,7 +9,6 @@ import psycopg2.errors
 from psycopg2.extras import RealDictCursor
 import firebase_admin
 from firebase_admin import credentials, messaging
-from firebase_admin import messaging
 from flask_cors import CORS
 from flask_socketio import SocketIO
 import os
