@@ -74,7 +74,16 @@
         import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 
         const API_BASE = "https://emergency-ambulance-alert.onrender.com";
-        const USER_ID = 1; // for a real multi-user app, this would come from login/signup
+        function getDeviceId() {
+    let deviceId = localStorage.getItem("ambulance_alert_device_id");
+    if (!deviceId) {
+        deviceId = 'device_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+        localStorage.setItem("ambulance_alert_device_id", deviceId);
+    }
+    return deviceId;
+}
+
+let USER_ID = null; // will be set after device registration
 
         const firebaseConfig = {
             apiKey: "AIzaSyCCDoW8qZ70Wc6qw6WWgmH10Wl1KvZZWTA",
@@ -93,6 +102,15 @@
 
         async function initializeAlerts() {
             try {
+                const deviceId = getDeviceId();
+                const regResp = await fetch(`${API_BASE}/api/users/register-device`, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ device_id: deviceId })
+                });
+                const regData = await regResp.json();
+                USER_ID = regData.user_id;
+
                 // 1. Notification permission + FCM token
                 const permission = await Notification.requestPermission();
                 if (permission !== "granted") {
