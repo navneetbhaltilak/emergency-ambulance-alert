@@ -378,6 +378,7 @@ def get_ambulance_status(ambulance_id):
     if row is None:
         return jsonify({"status": "not_found"}), 404
     return jsonify({"status": row["status"]}), 200
+
 @app.route("/api/ambulance/emergency/end", methods=["POST"])
 def end_emergency():
     data = request.json
@@ -410,6 +411,36 @@ def update_token():
     conn.close()
 
     return jsonify({"status": "token updated"}), 200
+
+@app.route("/api/users/register-device", methods=["POST"])
+def register_device():
+    data = request.json
+    device_id = data["device_id"]
+    lat = data.get("latitude")
+    lng = data.get("longitude")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT user_id FROM users WHERE device_id = %s", (device_id,))
+    existing = cur.fetchone()
+
+    if existing:
+        user_id = existing["user_id"]
+    else:
+        cur.execute("""
+            INSERT INTO users (device_id, name, location, alert_enabled)
+            VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography, TRUE)
+            RETURNING user_id
+        """, (device_id, f"Device-{device_id[:8]}", lng or 0, lat or 0))
+        user_id = cur.fetchone()["user_id"]
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify({"user_id": user_id}), 200
+
 @app.route("/api/dashboard/active", methods=["GET"])
 def dashboard_active():
     conn = get_db()
