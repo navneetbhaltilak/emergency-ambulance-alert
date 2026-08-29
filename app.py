@@ -37,7 +37,6 @@ def get_db():
                 time.sleep(1)
             else:
                 raise
-@app.route("/api/users/register", methods=["POST"])
 def get_alert_level(distance_km):
     if distance_km <= 0.5:
         return "critical"
@@ -133,6 +132,8 @@ def is_near_road(cur, lat, lon, threshold_meters=30):
     return cur.fetchone()["near_road"]
 def is_ahead(ambulance_bearing, bearing_to_user, cone_degrees=90):
     return bearing_difference(ambulance_bearing, bearing_to_user) <= cone_degrees
+
+@app.route("/api/users/register", methods=["POST"])
 def register_user():
     data = request.json
     name = data["name"]
