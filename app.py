@@ -130,6 +130,20 @@ def is_near_road(cur, lat, lon, threshold_meters=30):
         ) AS near_road
     """, (lon, lat, threshold_meters))
     return cur.fetchone()["near_road"]
+
+def geocode_address(address):
+    try:
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {"q": address, "format": "json", "limit": 1}
+        headers = {"User-Agent": "EmergencyAmbulanceAlert/1.0"}
+        resp = http_requests.get(url, params=params, headers=headers, timeout=5)
+        results = resp.json()
+        if results:
+            return float(results[0]["lat"]), float(results[0]["lon"])
+    except Exception as e:
+        print(f"Geocoding failed: {e}")
+    return None, None
+
 def is_ahead(ambulance_bearing, bearing_to_user, cone_degrees=90):
     return bearing_difference(ambulance_bearing, bearing_to_user) <= cone_degrees
 
