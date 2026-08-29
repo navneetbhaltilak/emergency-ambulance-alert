@@ -221,6 +221,9 @@ def start_emergency():
     destination = data.get("destination", None)
     dest_lat = data.get("destination_lat")
     dest_lng = data.get("destination_lng")
+    # If a destination name was given but no coordinates, geocode it
+    if destination and not (dest_lat and dest_lng):
+        dest_lat, dest_lng = geocode_address(destination)
 
     conn = get_db()
     cur = conn.cursor()
