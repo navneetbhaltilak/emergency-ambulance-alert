@@ -46,7 +46,15 @@
     <div class="subtitle">Real-time emergency location broadcast</div>
 
     <input type="text" id="ambulanceId" placeholder="Ambulance ID (e.g. AMB001)" value="AMB001">
-    <input type="text" id="destination" placeholder="Destination (optional)">
+    <div style="position: relative; width: 100%; max-width: 320px;">
+        <input type="text" id="destination" placeholder="Destination (optional)" autocomplete="off">
+        <div id="suggestionsBox" style="
+            display: none; position: absolute; top: 100%; left: 0; right: 0;
+            background: white; border-radius: 10px; margin-top: 4px;
+            max-height: 200px; overflow-y: auto; z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        "></div>
+    </div>
 
     <button id="startBtn">🔴 Start Emergency</button>
     <button id="endBtn">⬛ End Emergency</button>
@@ -65,6 +73,72 @@
         let watchId = null;
         let pingCounter = 0;
         let lastPosition = null;
+        let selectedDestLat = null;
+        let selectedDestLng = null;
+        let debounceTimer = null;
+
+        document.getElementById("destination").addEventListener("input", (e) => {
+            const query = e.target.value.trim();
+            selectedDestLat = null;
+            selectedDestLng = null;
+
+            clearTimeout(debounceTimer);
+
+            if (query.length < 3) {
+                document.getElementById("suggestionsBox").style.display = "none";
+                return;
+            }
+
+            debounceTimer = setTimeout(() => fetchSuggestions(query), 400);
+        });
+
+        async function fetchSuggestions(query) {
+            try {
+                const resp = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`, {
+                    headers: { "Accept-Language": "en" }
+                });
+                const results = await resp.json();
+                showSuggestions(results);
+            } catch (err) {
+                console.error("Suggestion fetch failed:", err);
+            }
+        }
+
+        function showSuggestions(results) {
+            const box = document.getElementById("suggestionsBox");
+
+            if (!results || results.length === 0) {
+                box.style.display = "none";
+                return;
+            }
+
+            box.innerHTML = results.map(place => `
+                <div class="suggestion-item" data-lat="${place.lat}" data-lng="${place.lon}"
+                    style="padding: 12px; cursor: pointer; color: #1a1a1a; border-bottom: 1px solid #eee; font-size: 14px;">
+                    ${place.display_name}
+                </div>
+            `).join("");
+
+            box.style.display = "block";
+
+            box.querySelectorAll(".suggestion-item").forEach(item => {
+                item.addEventListener("click", () => {
+                    document.getElementById("destination").value = item.textContent.trim();
+                    selectedDestLat = parseFloat(item.dataset.lat);
+                    selectedDestLng = parseFloat(item.dataset.lng);
+                    box.style.display = "none";
+                });
+                item.addEventListener("mouseenter", () => item.style.background = "#f0f0f0");
+                item.addEventListener("mouseleave", () => item.style.background = "white");
+            });
+        }
+
+        // Hide suggestions when clicking elsewhere
+        document.addEventListener("click", (e) => {
+            if (!e.target.closest("#destination") && !e.target.closest("#suggestionsBox")) {
+                document.getElementById("suggestionsBox").style.display = "none";
+            }
+        });
 
         async function checkExistingEmergency() {
             const ambulanceId = document.getElementById("ambulanceId").value.trim();
@@ -96,11 +170,13 @@
             navigator.geolocation.getCurrentPosition(async (pos) => {
                 try {
                     const body = { ambulance_id: ambulanceId };
-                    if (destination) {
-                        body.destination = destination;
-                        // NOTE: for real destination routing you'd geocode the address to lat/lng.
-                        // For now this starts the emergency; route requires destination_lat/lng too.
+                if (destination) {
+                    body.destination = destination;
+                    if (selectedDestLat && selectedDestLng) {
+                        body.destination_lat = selectedDestLat;
+                        body.destination_lng = selectedDestLng;
                     }
+                }
 
                     const resp = await fetch(`${API_BASE}/api/ambulance/emergency/start`, {
                         method: "POST",
