@@ -267,7 +267,12 @@ def start_emergency():
     cur.close()
     conn.close()
 
-    return jsonify({"event_id": event_id, "destination": destination, "has_route": route_geojson is not None}), 201
+    return jsonify({
+        "event_id": event_id,
+        "destination": destination,
+        "has_route": route_geojson is not None,
+        "route_geojson": route_geojson
+    }), 201
 
 @app.route("/api/ambulance/location", methods=["POST"])
 def ambulance_location_ping():

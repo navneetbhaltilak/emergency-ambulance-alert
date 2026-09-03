@@ -4,6 +4,7 @@
     <title>Ambulance Driver App</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body {
             margin: 0; font-family: -apple-system, sans-serif;
@@ -44,6 +45,7 @@
 <body>
     <h1>🚑 Ambulance Driver</h1>
     <div class="subtitle">Real-time emergency location broadcast</div>
+    <div id="routeMap" style="width: 100%; max-width: 320px; height: 250px; border-radius: 14px; margin-top: 20px; display: none;"></div>
 
     <input type="text" id="ambulanceId" placeholder="Ambulance ID (e.g. AMB001)" value="AMB001">
     <div style="position: relative; width: 100%; max-width: 320px;">
@@ -76,6 +78,8 @@
         let selectedDestLat = null;
         let selectedDestLng = null;
         let debounceTimer = null;
+        let routeMap = null;
+        let routeLine = null;  
 
         document.getElementById("destination").addEventListener("input", (e) => {
             const query = e.target.value.trim();
@@ -133,6 +137,25 @@
             });
         }
 
+        function showRoute(routeGeojson) {
+            if (!routeGeojson) return;
+
+            document.getElementById("routeMap").style.display = "block";
+
+            if (!routeMap) {
+                routeMap = L.map('routeMap');
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap contributors'
+                }).addTo(routeMap);
+            }
+
+            if (routeLine) routeMap.removeLayer(routeLine);
+
+            const latlngs = routeGeojson.coordinates.map(c => [c[1], c[0]]);
+            routeLine = L.polyline(latlngs, { color: '#e63946', weight: 5 }).addTo(routeMap);
+            routeMap.fitBounds(routeLine.getBounds());
+        }
+
         // Hide suggestions when clicking elsewhere
         document.addEventListener("click", (e) => {
             if (!e.target.closest("#destination") && !e.target.closest("#suggestionsBox")) {
@@ -185,6 +208,9 @@
                     });
                     const data = await resp.json();
                     console.log("Emergency started:", data);
+                    if (data.route_geojson) {
+                        showRoute(data.route_geojson);
+                    }
 
                     document.getElementById("startBtn").style.display = "none";
                     document.getElementById("endBtn").style.display = "block";
@@ -274,5 +300,6 @@
         checkExistingEmergency();
         document.getElementById("ambulanceId").addEventListener("change", checkExistingEmergency);
     </script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </body>
 </html>
