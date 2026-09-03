@@ -356,10 +356,11 @@
                 showRoute(data.route_geojson);
               }
 
-              document.getElementById("startBtn").style.display = "none";
+              btn.innerHTML = "🔴 Start Emergency";
+              btn.disabled = false;
+              btn.style.display = "none";
               document.getElementById("endBtn").style.display = "block";
               document.getElementById("statusCard").style.display = "block";
-
               setTimeout(() => startTracking(ambulanceId), 2000);
             } catch (err) {
               btn.disabled = false;
@@ -377,11 +378,17 @@
 
       document.getElementById("endBtn").onclick = async () => {
         const ambulanceId = document.getElementById("ambulanceId").value.trim();
+        const endBtn = document.getElementById("endBtn");
+        const startBtn = document.getElementById("startBtn");
+
+        endBtn.disabled = true;
+        endBtn.innerHTML = "⏳ Ending emergency...";
 
         if (trackingInterval !== null) {
           clearInterval(trackingInterval);
           trackingInterval = null;
         }
+
         try {
           await fetch(`${API_BASE}/api/ambulance/emergency/end`, {
             method: "POST",
@@ -392,8 +399,15 @@
           console.error(err);
         }
 
-        document.getElementById("startBtn").style.display = "block";
-        document.getElementById("endBtn").style.display = "none";
+        // Always reset UI, whether the request succeeded or failed
+        startBtn.style.display = "block";
+        startBtn.disabled = false;
+        startBtn.innerHTML = "🔴 Start Emergency";
+
+        endBtn.style.display = "none";
+        endBtn.disabled = false;
+        endBtn.innerHTML = "⬛ End Emergency";
+
         document.getElementById("statusCard").style.display = "none";
         pingCounter = 0;
       };
