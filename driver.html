@@ -38,6 +38,15 @@
         @keyframes pulse {
             0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; }
         }
+        .ambulance-icon {
+            font-size: 48px;
+            display: inline-block;
+            animation: drive 1.2s infinite ease-in-out;
+        }
+        @keyframes drive {
+            0%, 100% { transform: translateX(0); }
+            50% { transform: translateX(8px); }
+        }
         .stat { font-size: 28px; font-weight: 700; margin: 8px 0; }
         .label { font-size: 12px; color: #aaa; text-transform: uppercase; }
     </style>
@@ -62,6 +71,7 @@
     <button id="endBtn">⬛ End Emergency</button>
 
     <div id="statusCard" style="display:none;">
+        <div class="ambulance-icon">🚑</div>
         <div><span class="pulse"></span>Broadcasting live location</div>
         <div class="stat" id="speedStat">0 km/h</div>
         <div class="label">Current Speed</div>
