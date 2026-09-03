@@ -1,315 +1,471 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
+  <head>
     <title>Ambulance Driver App</title>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
     <style>
-        body {
-            margin: 0; font-family: -apple-system, sans-serif;
-            background: #1a1a2e; color: white; min-height: 100vh;
-            display: flex; flex-direction: column; align-items: center;
-            padding: 24px; box-sizing: border-box;
+      body {
+        margin: 0;
+        font-family: -apple-system, sans-serif;
+        background: #1a1a2e;
+        color: white;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      h1 {
+        font-size: 20px;
+        margin-bottom: 4px;
+      }
+      .subtitle {
+        color: #aaa;
+        font-size: 13px;
+        margin-bottom: 32px;
+      }
+      input,
+      select {
+        width: 100%;
+        max-width: 320px;
+        padding: 14px;
+        margin-bottom: 12px;
+        border-radius: 10px;
+        border: none;
+        font-size: 16px;
+        box-sizing: border-box;
+      }
+      button {
+        width: 100%;
+        max-width: 320px;
+        padding: 16px;
+        border: none;
+        border-radius: 10px;
+        font-size: 17px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 12px;
+      }
+      #startBtn {
+        background: #e63946;
+        color: white;
+      }
+      #endBtn {
+        background: #444;
+        color: white;
+        display: none;
+      }
+      #statusCard {
+        margin-top: 32px;
+        padding: 20px;
+        border-radius: 14px;
+        background: #16213e;
+        width: 100%;
+        max-width: 320px;
+        box-sizing: border-box;
+        text-align: center;
+      }
+      .pulse {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #2ecc71;
+        display: inline-block;
+        margin-right: 8px;
+        animation: pulse 1.5s infinite;
+      }
+      @keyframes pulse {
+        0% {
+          opacity: 1;
         }
-        h1 { font-size: 20px; margin-bottom: 4px; }
-        .subtitle { color: #aaa; font-size: 13px; margin-bottom: 32px; }
-        input, select {
-            width: 100%; max-width: 320px; padding: 14px; margin-bottom: 12px;
-            border-radius: 10px; border: none; font-size: 16px; box-sizing: border-box;
+        50% {
+          opacity: 0.3;
         }
-        button {
-            width: 100%; max-width: 320px; padding: 16px; border: none;
-            border-radius: 10px; font-size: 17px; font-weight: 600;
-            cursor: pointer; margin-top: 12px;
+        100% {
+          opacity: 1;
         }
-        #startBtn { background: #e63946; color: white; }
-        #endBtn { background: #444; color: white; display: none; }
-        #statusCard {
-            margin-top: 32px; padding: 20px; border-radius: 14px;
-            background: #16213e; width: 100%; max-width: 320px;
-            box-sizing: border-box; text-align: center;
+      }
+      .ambulance-icon {
+        font-size: 48px;
+        display: inline-block;
+        animation: drive 1.2s infinite ease-in-out;
+      }
+      @keyframes drive {
+        0%,
+        100% {
+          transform: translateX(0);
         }
-        .pulse {
-            width: 14px; height: 14px; border-radius: 50%;
-            background: #2ecc71; display: inline-block; margin-right: 8px;
-            animation: pulse 1.5s infinite;
+        50% {
+          transform: translateX(8px);
         }
-        @keyframes pulse {
-            0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; }
-        }
-        .ambulance-icon {
-            font-size: 48px;
-            display: inline-block;
-            animation: drive 1.2s infinite ease-in-out;
-        }
-        @keyframes drive {
-            0%, 100% { transform: translateX(0); }
-            50% { transform: translateX(8px); }
-        }
-        .stat { font-size: 28px; font-weight: 700; margin: 8px 0; }
-        .label { font-size: 12px; color: #aaa; text-transform: uppercase; }
+      }
+      .stat {
+        font-size: 28px;
+        font-weight: 700;
+        margin: 8px 0;
+      }
+      .label {
+        font-size: 12px;
+        color: #aaa;
+        text-transform: uppercase;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <h1>🚑 Ambulance Driver</h1>
     <div class="subtitle">Real-time emergency location broadcast</div>
-    <div id="routeMap" style="width: 100%; max-width: 320px; height: 250px; border-radius: 14px; margin-top: 20px; display: none;"></div>
+    <div
+      id="routeMap"
+      style="
+        width: 100%;
+        max-width: 320px;
+        height: 250px;
+        border-radius: 14px;
+        margin-top: 20px;
+        display: none;
+      "
+    ></div>
 
-    <input type="text" id="ambulanceId" placeholder="Ambulance ID (e.g. AMB001)" value="AMB001">
-    <div style="position: relative; width: 100%; max-width: 320px;">
-        <input type="text" id="destination" placeholder="Destination (optional)" autocomplete="off">
-        <div id="suggestionsBox" style="
-            display: none; position: absolute; top: 100%; left: 0; right: 0;
-            background: white; border-radius: 10px; margin-top: 4px;
-            max-height: 200px; overflow-y: auto; z-index: 1000;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        "></div>
+    <input
+      type="text"
+      id="ambulanceId"
+      placeholder="Ambulance ID (e.g. AMB001)"
+      value="AMB001"
+    />
+    <div style="position: relative; width: 100%; max-width: 320px">
+      <input
+        type="text"
+        id="destination"
+        placeholder="Destination (optional)"
+        autocomplete="off"
+      />
+      <div
+        id="suggestionsBox"
+        style="
+          display: none;
+          position: absolute;
+          top: 100%;
+          left: 0;
+          right: 0;
+          background: white;
+          border-radius: 10px;
+          margin-top: 4px;
+          max-height: 200px;
+          overflow-y: auto;
+          z-index: 1000;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        "
+      ></div>
     </div>
 
     <button id="startBtn">🔴 Start Emergency</button>
     <button id="endBtn">⬛ End Emergency</button>
 
-    <div id="statusCard" style="display:none;">
-        <div class="ambulance-icon">🚑</div>
-        <div><span class="pulse"></span>Broadcasting live location</div>
-        <div class="stat" id="speedStat">0 km/h</div>
-        <div class="label">Current Speed</div>
-        <div class="stat" id="alertStat">0</div>
-        <div class="label">Users Alerted (Last Ping)</div>
-        <div class="label" style="margin-top:12px;" id="pingCount">0 location updates sent</div>
+    <div id="statusCard" style="display: none">
+      <div class="ambulance-icon">🚑</div>
+      <div><span class="pulse"></span>Broadcasting live location</div>
+      <div class="stat" id="speedStat">0 km/h</div>
+      <div class="label">Current Speed</div>
+      <div class="stat" id="alertStat">0</div>
+      <div class="label">Users Alerted (Last Ping)</div>
+      <div class="label" style="margin-top: 12px" id="pingCount">
+        0 location updates sent
+      </div>
     </div>
 
     <script>
-        const API_BASE = "https://emergency-ambulance-alert.onrender.com";
-        let watchId = null;
-        let pingCounter = 0;
-        let lastPosition = null;
-        let selectedDestLat = null;
-        let selectedDestLng = null;
-        let debounceTimer = null;
-        let routeMap = null;
-        let routeLine = null;  
+      const API_BASE = "https://emergency-ambulance-alert.onrender.com";
+      let watchId = null;
+      let pingCounter = 0;
+      let lastPosition = null;
+      let selectedDestLat = null;
+      let selectedDestLng = null;
+      let debounceTimer = null;
+      let routeMap = null;
+      let routeLine = null;
 
-        document.getElementById("destination").addEventListener("input", (e) => {
-            const query = e.target.value.trim();
-            selectedDestLat = null;
-            selectedDestLng = null;
+      document.getElementById("destination").addEventListener("input", (e) => {
+        const query = e.target.value.trim();
+        selectedDestLat = null;
+        selectedDestLng = null;
 
-            clearTimeout(debounceTimer);
+        clearTimeout(debounceTimer);
 
-            if (query.length < 3) {
-                document.getElementById("suggestionsBox").style.display = "none";
-                return;
-            }
-
-            debounceTimer = setTimeout(() => fetchSuggestions(query), 400);
-        });
-
-        async function fetchSuggestions(query) {
-            try {
-                const resp = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`, {
-                    headers: { "Accept-Language": "en" }
-                });
-                const results = await resp.json();
-                showSuggestions(results);
-            } catch (err) {
-                console.error("Suggestion fetch failed:", err);
-            }
+        if (query.length < 3) {
+          document.getElementById("suggestionsBox").style.display = "none";
+          return;
         }
 
-        function showSuggestions(results) {
-            const box = document.getElementById("suggestionsBox");
+        debounceTimer = setTimeout(() => fetchSuggestions(query), 400);
+      });
 
-            if (!results || results.length === 0) {
-                box.style.display = "none";
-                return;
-            }
+      async function fetchSuggestions(query) {
+        try {
+          const resp = await fetch(
+            `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`,
+            {
+              headers: { "Accept-Language": "en" },
+            },
+          );
+          const results = await resp.json();
+          showSuggestions(results);
+        } catch (err) {
+          console.error("Suggestion fetch failed:", err);
+        }
+      }
 
-            box.innerHTML = results.map(place => `
+      function showSuggestions(results) {
+        const box = document.getElementById("suggestionsBox");
+
+        if (!results || results.length === 0) {
+          box.style.display = "none";
+          return;
+        }
+
+        box.innerHTML = results
+          .map(
+            (place) => `
                 <div class="suggestion-item" data-lat="${place.lat}" data-lng="${place.lon}"
                     style="padding: 12px; cursor: pointer; color: #1a1a1a; border-bottom: 1px solid #eee; font-size: 14px;">
                     ${place.display_name}
                 </div>
-            `).join("");
+            `,
+          )
+          .join("");
 
-            box.style.display = "block";
+        box.style.display = "block";
 
-            box.querySelectorAll(".suggestion-item").forEach(item => {
-                item.addEventListener("click", () => {
-                    document.getElementById("destination").value = item.textContent.trim();
-                    selectedDestLat = parseFloat(item.dataset.lat);
-                    selectedDestLng = parseFloat(item.dataset.lng);
-                    box.style.display = "none";
-                });
-                item.addEventListener("mouseenter", () => item.style.background = "#f0f0f0");
-                item.addEventListener("mouseleave", () => item.style.background = "white");
-            });
-        }
-
-        function showRoute(routeGeojson) {
-            if (!routeGeojson) return;
-
-            document.getElementById("routeMap").style.display = "block";
-
-            if (!routeMap) {
-                routeMap = L.map('routeMap');
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; OpenStreetMap contributors'
-                }).addTo(routeMap);
-            }
-
-            if (routeLine) routeMap.removeLayer(routeLine);
-
-            const latlngs = routeGeojson.coordinates.map(c => [c[1], c[0]]);
-            routeLine = L.polyline(latlngs, { color: '#e63946', weight: 5 }).addTo(routeMap);
-            routeMap.fitBounds(routeLine.getBounds());
-        }
-
-        // Hide suggestions when clicking elsewhere
-        document.addEventListener("click", (e) => {
-            if (!e.target.closest("#destination") && !e.target.closest("#suggestionsBox")) {
-                document.getElementById("suggestionsBox").style.display = "none";
-            }
+        box.querySelectorAll(".suggestion-item").forEach((item) => {
+          item.addEventListener("click", () => {
+            document.getElementById("destination").value =
+              item.textContent.trim();
+            selectedDestLat = parseFloat(item.dataset.lat);
+            selectedDestLng = parseFloat(item.dataset.lng);
+            box.style.display = "none";
+          });
+          item.addEventListener(
+            "mouseenter",
+            () => (item.style.background = "#f0f0f0"),
+          );
+          item.addEventListener(
+            "mouseleave",
+            () => (item.style.background = "white"),
+          );
         });
+      }
 
-        async function checkExistingEmergency() {
-            const ambulanceId = document.getElementById("ambulanceId").value.trim();
-            if (!ambulanceId) return;
+      function showRoute(routeGeojson) {
+        if (!routeGeojson) return;
 
+        document.getElementById("routeMap").style.display = "block";
+
+        if (!routeMap) {
+          routeMap = L.map("routeMap");
+          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            attribution: "&copy; OpenStreetMap contributors",
+          }).addTo(routeMap);
+        }
+
+        if (routeLine) routeMap.removeLayer(routeLine);
+
+        const latlngs = routeGeojson.coordinates.map((c) => [c[1], c[0]]);
+        routeLine = L.polyline(latlngs, { color: "#e63946", weight: 5 }).addTo(
+          routeMap,
+        );
+        routeMap.fitBounds(routeLine.getBounds());
+      }
+
+      // Hide suggestions when clicking elsewhere
+      document.addEventListener("click", (e) => {
+        if (
+          !e.target.closest("#destination") &&
+          !e.target.closest("#suggestionsBox")
+        ) {
+          document.getElementById("suggestionsBox").style.display = "none";
+        }
+      });
+
+      async function checkExistingEmergency() {
+        const ambulanceId = document.getElementById("ambulanceId").value.trim();
+        if (!ambulanceId) return;
+
+        try {
+          const resp = await fetch(
+            `${API_BASE}/api/ambulance/status/${ambulanceId}`,
+          );
+          const data = await resp.json();
+
+          if (data.status === "emergency") {
+            document.getElementById("startBtn").style.display = "none";
+            document.getElementById("endBtn").style.display = "block";
+            document.getElementById("statusCard").style.display = "block";
+            startTracking(ambulanceId);
+          }
+        } catch (err) {
+          console.error("Failed to check existing status:", err);
+        }
+      }
+
+      document.getElementById("startBtn").onclick = async () => {
+        const ambulanceId = document.getElementById("ambulanceId").value.trim();
+        const destination = document.getElementById("destination").value.trim();
+
+        if (!ambulanceId) {
+          alert("Enter an ambulance ID");
+          return;
+        }
+        if (!navigator.geolocation) {
+          alert("Geolocation not supported on this device");
+          return;
+        }
+
+        const btn = document.getElementById("startBtn");
+        btn.disabled = true;
+        btn.innerHTML = "⏳ Getting your location...";
+
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            btn.innerHTML = "⏳ Starting emergency...";
             try {
-                const resp = await fetch(`${API_BASE}/api/ambulance/status/${ambulanceId}`);
+              const body = { ambulance_id: ambulanceId };
+              if (destination) {
+                body.destination = destination;
+                if (selectedDestLat && selectedDestLng) {
+                  body.destination_lat = selectedDestLat;
+                  body.destination_lng = selectedDestLng;
+                }
+              }
+
+              const resp = await fetch(
+                `${API_BASE}/api/ambulance/emergency/start`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(body),
+                },
+              );
+              const data = await resp.json();
+              console.log("Emergency started:", data);
+              if (data.route_geojson) {
+                showRoute(data.route_geojson);
+              }
+
+              document.getElementById("startBtn").style.display = "none";
+              document.getElementById("endBtn").style.display = "block";
+              document.getElementById("statusCard").style.display = "block";
+
+              setTimeout(() => startTracking(ambulanceId), 2000);
+            } catch (err) {
+              btn.disabled = false;
+              btn.innerHTML = "🔴 Start Emergency";
+              alert("Failed to start emergency: " + err.message);
+            }
+          },
+          (err) => {
+            btn.disabled = false;
+            btn.innerHTML = "🔴 Start Emergency";
+            alert("Location permission is required to start an emergency.");
+          },
+        );
+      };
+
+      document.getElementById("endBtn").onclick = async () => {
+        const ambulanceId = document.getElementById("ambulanceId").value.trim();
+
+        if (trackingInterval !== null) {
+          clearInterval(trackingInterval);
+          trackingInterval = null;
+        }
+        try {
+          await fetch(`${API_BASE}/api/ambulance/emergency/end`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ambulance_id: ambulanceId }),
+          });
+        } catch (err) {
+          console.error(err);
+        }
+
+        document.getElementById("startBtn").style.display = "block";
+        document.getElementById("endBtn").style.display = "none";
+        document.getElementById("statusCard").style.display = "none";
+        pingCounter = 0;
+      };
+
+      let trackingInterval = null;
+
+      function startTracking(ambulanceId) {
+        async function pingLocation() {
+          navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+              const lat = pos.coords.latitude;
+              const lng = pos.coords.longitude;
+              console.log(
+                "RAW GPS reading:",
+                lat,
+                lng,
+                "accuracy:",
+                pos.coords.accuracy,
+                "meters",
+              );
+
+              if (pos.coords.accuracy > 5000) {
+                console.log("Skipping low-accuracy reading (>5km uncertain)");
+                return;
+              }
+
+              const speedMs = pos.coords.speed;
+              const speedKmh = speedMs ? Math.round(speedMs * 3.6) : 0;
+
+              try {
+                const resp = await fetch(`${API_BASE}/api/ambulance/location`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    ambulance_id: ambulanceId,
+                    latitude: lat,
+                    longitude: lng,
+                    speed: speedKmh,
+                  }),
+                });
                 const data = await resp.json();
 
-                if (data.status === "emergency") {
-                    document.getElementById("startBtn").style.display = "none";
-                    document.getElementById("endBtn").style.display = "block";
-                    document.getElementById("statusCard").style.display = "block";
-                    startTracking(ambulanceId);
-                }
-            } catch (err) {
-                console.error("Failed to check existing status:", err);
-            }
+                pingCounter++;
+                document.getElementById("speedStat").innerText =
+                  `${speedKmh} km/h`;
+                document.getElementById("alertStat").innerText =
+                  data.notified ?? 0;
+                document.getElementById("pingCount").innerText =
+                  `${pingCounter} location updates sent`;
+              } catch (err) {
+                console.error("Failed to send location:", err);
+              }
+            },
+            (err) => {
+              console.error("Geolocation error:", err);
+            },
+            {
+              enableHighAccuracy: true,
+              maximumAge: 0,
+              timeout: 10000,
+            },
+          );
         }
 
-        document.getElementById("startBtn").onclick = async () => {
-            const ambulanceId = document.getElementById("ambulanceId").value.trim();
-            const destination = document.getElementById("destination").value.trim();
-
-            if (!ambulanceId) { alert("Enter an ambulance ID"); return; }
-            if (!navigator.geolocation) { alert("Geolocation not supported on this device"); return; }
-
-            // Ask for current position first, to use as destination-routing origin if needed
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-                try {
-                    const body = { ambulance_id: ambulanceId };
-                if (destination) {
-                    body.destination = destination;
-                    if (selectedDestLat && selectedDestLng) {
-                        body.destination_lat = selectedDestLat;
-                        body.destination_lng = selectedDestLng;
-                    }
-                }
-
-                    const resp = await fetch(`${API_BASE}/api/ambulance/emergency/start`, {
-                        method: "POST",
-                        headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify(body)
-                    });
-                    const data = await resp.json();
-                    console.log("Emergency started:", data);
-                    if (data.route_geojson) {
-                        showRoute(data.route_geojson);
-                    }
-
-                    document.getElementById("startBtn").style.display = "none";
-                    document.getElementById("endBtn").style.display = "block";
-                    document.getElementById("statusCard").style.display = "block";
-
-                    setTimeout(() => startTracking(ambulanceId), 2000);
-                } catch (err) {
-                    alert("Failed to start emergency: " + err.message);
-                }
-            }, (err) => {
-                alert("Location permission is required to start an emergency.");
-            });
-        };
-
-        document.getElementById("endBtn").onclick = async () => {
-            const ambulanceId = document.getElementById("ambulanceId").value.trim();
-
-            if (trackingInterval !== null) {
-                clearInterval(trackingInterval);
-                trackingInterval = null;
-            }
-            try {
-                await fetch(`${API_BASE}/api/ambulance/emergency/end`, {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({ ambulance_id: ambulanceId })
-                });
-            } catch (err) {
-                console.error(err);
-            }
-
-            document.getElementById("startBtn").style.display = "block";
-            document.getElementById("endBtn").style.display = "none";
-            document.getElementById("statusCard").style.display = "none";
-            pingCounter = 0;
-        };
-
-        let trackingInterval = null;
-
-        function startTracking(ambulanceId) {
-            async function pingLocation() {
-                navigator.geolocation.getCurrentPosition(async (pos) => {
-                    const lat = pos.coords.latitude;
-                    const lng = pos.coords.longitude;
-                    console.log("RAW GPS reading:", lat, lng, "accuracy:", pos.coords.accuracy, "meters");
-
-                    if (pos.coords.accuracy > 5000) {
-                        console.log("Skipping low-accuracy reading (>5km uncertain)");
-                        return;
-                    }
-
-                    const speedMs = pos.coords.speed;
-                    const speedKmh = speedMs ? Math.round(speedMs * 3.6) : 0;
-
-                    try {
-                        const resp = await fetch(`${API_BASE}/api/ambulance/location`, {
-                            method: "POST",
-                            headers: {"Content-Type": "application/json"},
-                            body: JSON.stringify({
-                                ambulance_id: ambulanceId,
-                                latitude: lat,
-                                longitude: lng,
-                                speed: speedKmh
-                            })
-                        });
-                        const data = await resp.json();
-
-                        pingCounter++;
-                        document.getElementById("speedStat").innerText = `${speedKmh} km/h`;
-                        document.getElementById("alertStat").innerText = data.notified ?? 0;
-                        document.getElementById("pingCount").innerText = `${pingCounter} location updates sent`;
-                    } catch (err) {
-                        console.error("Failed to send location:", err);
-                    }
-                }, (err) => {
-                    console.error("Geolocation error:", err);
-                }, {
-                    enableHighAccuracy: true,
-                    maximumAge: 0,
-                    timeout: 10000
-                });
-            }
-
-    pingLocation(); // first ping immediately
-    trackingInterval = setInterval(pingLocation, 5000); // then every 5 seconds
-}
-        checkExistingEmergency();
-        document.getElementById("ambulanceId").addEventListener("change", checkExistingEmergency);
+        pingLocation(); // first ping immediately
+        trackingInterval = setInterval(pingLocation, 5000); // then every 5 seconds
+      }
+      checkExistingEmergency();
+      document
+        .getElementById("ambulanceId")
+        .addEventListener("change", checkExistingEmergency);
     </script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-</body>
+  </body>
 </html>
