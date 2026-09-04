@@ -1,3 +1,6 @@
+
+
+Driver · HTML
 <!doctype html>
 <html>
   <head>
@@ -110,10 +113,19 @@
         font-weight: 700;
         margin: 8px 0;
       }
+      .stat.small {
+        font-size: 20px;
+      }
       .label {
         font-size: 12px;
         color: #aaa;
         text-transform: uppercase;
+      }
+      .amb-div-icon, .dest-div-icon {
+        font-size: 22px;
+        background: none;
+        border: none;
+        text-align: center;
       }
     </style>
   </head>
@@ -142,7 +154,7 @@
       <input
         type="text"
         id="destination"
-        placeholder="Destination (optional)"
+        placeholder="Destination"
         autocomplete="off"
       />
       <div
@@ -172,11 +184,16 @@
       <div><span class="pulse"></span>Broadcasting live location</div>
       <div class="stat" id="speedStat">0 km/h</div>
       <div class="label">Current Speed</div>
+      <div class="stat small" id="remainingDistStat">--</div>
+      <div class="label">Distance To Destination</div>
+      <div class="stat small" id="etaStat">--</div>
+      <div class="label">Estimated Time Needed</div>
       <div class="stat" id="alertStat">0</div>
       <div class="label">Users Alerted (Last Ping)</div>
       <div class="label" style="margin-top: 12px" id="pingCount">
         0 location updates sent
       </div>
+      <div class="label" id="gpsStatus" style="margin-top: 6px; color: #ffb4b4"></div>
     </div>
 
     <script>
@@ -189,6 +206,23 @@
       let debounceTimer = null;
       let routeMap = null;
       let routeLine = null;
+      let destMarker = null;
+      let ambulanceMapMarker = null;
+      let destLat = null;
+      let destLng = null;
+      let recentSpeeds = [];
+
+      function haversineDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371;
+        const dLat = ((lat2 - lat1) * Math.PI) / 180;
+        const dLon = ((lon2 - lon1) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos((lat1 * Math.PI) / 180) *
+            Math.cos((lat2 * Math.PI) / 180) *
+            Math.sin(dLon / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
 
       document.getElementById("destination").addEventListener("input", (e) => {
         const query = e.target.value.trim();
@@ -260,7 +294,7 @@
         });
       }
 
-      function showRoute(routeGeojson) {
+      function showRoute(routeGeojson, destinationLabel) {
         if (!routeGeojson) return;
 
         document.getElementById("routeMap").style.display = "block";
@@ -278,6 +312,29 @@
         routeLine = L.polyline(latlngs, { color: "#e63946", weight: 5 }).addTo(
           routeMap,
         );
+
+        if (destMarker) routeMap.removeLayer(destMarker);
+        const destPoint = latlngs[latlngs.length - 1];
+        const destIcon = L.divIcon({
+          html: "📍",
+          className: "dest-div-icon",
+          iconSize: [24, 24],
+        });
+        destMarker = L.marker(destPoint, { icon: destIcon })
+          .addTo(routeMap)
+          .bindPopup(`Destination${destinationLabel ? ": " + destinationLabel : ""}`);
+
+        const ambIcon = L.divIcon({
+          html: "🚑",
+          className: "amb-div-icon",
+          iconSize: [24, 24],
+        });
+        const ambulanceId = document.getElementById("ambulanceId").value.trim();
+        if (ambulanceMapMarker) routeMap.removeLayer(ambulanceMapMarker);
+        ambulanceMapMarker = L.marker(latlngs[0], { icon: ambIcon })
+          .addTo(routeMap)
+          .bindPopup(`Ambulance: ${ambulanceId}`);
+
         routeMap.fitBounds(routeLine.getBounds());
       }
 
@@ -305,6 +362,17 @@
             document.getElementById("startBtn").style.display = "none";
             document.getElementById("endBtn").style.display = "block";
             document.getElementById("statusCard").style.display = "block";
+
+            if (data.destination) {
+              document.getElementById("destination").value = data.destination;
+              document.getElementById("destination").disabled = true;
+            }
+            destLat = data.destination_lat ?? null;
+            destLng = data.destination_lng ?? null;
+            if (data.route_geojson) {
+              showRoute(data.route_geojson, data.destination);
+            }
+
             startTracking(ambulanceId);
           }
         } catch (err) {
@@ -320,6 +388,10 @@
           alert("Enter an ambulance ID");
           return;
         }
+        if (!destination) {
+          alert("Enter a destination — it's needed to calculate the route, live distance, and estimated arrival time.");
+          return;
+        }
         if (!navigator.geolocation) {
           alert("Geolocation not supported on this device");
           return;
@@ -333,13 +405,13 @@
           async (pos) => {
             btn.innerHTML = "⏳ Starting emergency...";
             try {
-              const body = { ambulance_id: ambulanceId };
-              if (destination) {
-                body.destination = destination;
-                if (selectedDestLat && selectedDestLng) {
-                  body.destination_lat = selectedDestLat;
-                  body.destination_lng = selectedDestLng;
-                }
+              const body = {
+                ambulance_id: ambulanceId,
+                destination: destination,
+              };
+              if (selectedDestLat && selectedDestLng) {
+                body.destination_lat = selectedDestLat;
+                body.destination_lng = selectedDestLng;
               }
 
               const resp = await fetch(
@@ -352,10 +424,13 @@
               );
               const data = await resp.json();
               console.log("Emergency started:", data);
+              destLat = data.destination_lat ?? null;
+              destLng = data.destination_lng ?? null;
               if (data.route_geojson) {
-                showRoute(data.route_geojson);
+                showRoute(data.route_geojson, data.destination);
               }
 
+              document.getElementById("destination").disabled = true;
               btn.innerHTML = "🔴 Start Emergency";
               btn.disabled = false;
               btn.style.display = "none";
@@ -410,59 +485,130 @@
 
         document.getElementById("statusCard").style.display = "none";
         pingCounter = 0;
+        recentSpeeds = [];
+        destLat = null;
+        destLng = null;
+
+        document.getElementById("destination").disabled = false;
+        document.getElementById("destination").value = "";
+        selectedDestLat = null;
+        selectedDestLng = null;
+
+        if (routeMap) {
+          if (routeLine) { routeMap.removeLayer(routeLine); routeLine = null; }
+          if (destMarker) { routeMap.removeLayer(destMarker); destMarker = null; }
+          if (ambulanceMapMarker) { routeMap.removeLayer(ambulanceMapMarker); ambulanceMapMarker = null; }
+        }
+        document.getElementById("routeMap").style.display = "none";
       };
 
       let trackingInterval = null;
 
       function startTracking(ambulanceId) {
+        let consecutiveLowAccuracy = 0;
+        const statusEl = document.getElementById("gpsStatus");
+
+        function setGpsStatus(text) {
+          statusEl.innerText = text || "";
+        }
+
+        async function sendLocation(lat, lng, speedKmh, accuracy) {
+          try {
+            const resp = await fetch(`${API_BASE}/api/ambulance/location`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ambulance_id: ambulanceId,
+                latitude: lat,
+                longitude: lng,
+                speed: speedKmh,
+              }),
+            });
+            if (!resp.ok) {
+              setGpsStatus(`Server error (${resp.status}) — will retry`);
+              return;
+            }
+            const data = await resp.json();
+
+            pingCounter++;
+            document.getElementById("speedStat").innerText = `${speedKmh} km/h`;
+            document.getElementById("alertStat").innerText = data.notified ?? 0;
+            document.getElementById("pingCount").innerText =
+              `${pingCounter} location updates sent`;
+            setGpsStatus(
+              accuracy > 100 ? `Sent (weak GPS signal, ±${Math.round(accuracy)}m)` : "",
+            );
+
+            if (ambulanceMapMarker) {
+              ambulanceMapMarker.setLatLng([lat, lng]);
+            }
+
+            if (destLat !== null && destLng !== null) {
+              const remainingKm = haversineDistance(lat, lng, destLat, destLng);
+              document.getElementById("remainingDistStat").innerText =
+                remainingKm < 1
+                  ? `${Math.round(remainingKm * 1000)} m`
+                  : `${remainingKm.toFixed(1)} km`;
+
+              if (speedKmh > 3) {
+                recentSpeeds.push(speedKmh);
+                if (recentSpeeds.length > 5) recentSpeeds.shift();
+              }
+              const avgSpeed = recentSpeeds.length
+                ? recentSpeeds.reduce((a, b) => a + b, 0) / recentSpeeds.length
+                : 25; // fallback assumed city speed until we have real readings
+
+              const etaMin = (remainingKm / avgSpeed) * 60;
+              document.getElementById("etaStat").innerText =
+                etaMin < 1 ? "<1 min" : `${Math.round(etaMin)} min`;
+            } else {
+              document.getElementById("remainingDistStat").innerText = "--";
+              document.getElementById("etaStat").innerText = "--";
+            }
+          } catch (err) {
+            console.error("Failed to send location:", err);
+            setGpsStatus("Can't reach server — check connection, will retry");
+          }
+        }
+
         async function pingLocation() {
           navigator.geolocation.getCurrentPosition(
             async (pos) => {
               const lat = pos.coords.latitude;
               const lng = pos.coords.longitude;
-              console.log(
-                "RAW GPS reading:",
-                lat,
-                lng,
-                "accuracy:",
-                pos.coords.accuracy,
-                "meters",
-              );
-
-              if (pos.coords.accuracy > 5000) {
-                console.log("Skipping low-accuracy reading (>5km uncertain)");
-                return;
-              }
+              const accuracy = pos.coords.accuracy;
+              console.log("RAW GPS reading:", lat, lng, "accuracy:", accuracy, "meters");
 
               const speedMs = pos.coords.speed;
               const speedKmh = speedMs ? Math.round(speedMs * 3.6) : 0;
 
-              try {
-                const resp = await fetch(`${API_BASE}/api/ambulance/location`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    ambulance_id: ambulanceId,
-                    latitude: lat,
-                    longitude: lng,
-                    speed: speedKmh,
-                  }),
-                });
-                const data = await resp.json();
-
-                pingCounter++;
-                document.getElementById("speedStat").innerText =
-                  `${speedKmh} km/h`;
-                document.getElementById("alertStat").innerText =
-                  data.notified ?? 0;
-                document.getElementById("pingCount").innerText =
-                  `${pingCounter} location updates sent`;
-              } catch (err) {
-                console.error("Failed to send location:", err);
+              if (accuracy > 5000) {
+                consecutiveLowAccuracy++;
+                // Give the phone a couple of tries to get a better fix before
+                // sending anyway — an approximate ping beats a silent gap in
+                // the broadcast, which is the whole point of this app.
+                if (consecutiveLowAccuracy < 3) {
+                  setGpsStatus(
+                    `Weak GPS signal (±${Math.round(accuracy / 1000)}km) — retrying…`,
+                  );
+                  return;
+                }
+                setGpsStatus(
+                  `GPS is weak (±${Math.round(accuracy / 1000)}km) — sending anyway so alerts don't stop`,
+                );
               }
+
+              consecutiveLowAccuracy = 0;
+              await sendLocation(lat, lng, speedKmh, accuracy);
             },
             (err) => {
               console.error("Geolocation error:", err);
+              const messages = {
+                1: "Location permission was denied — turn it back on in your browser settings",
+                2: "Location unavailable right now — check GPS/network",
+                3: "Location is taking too long — will keep trying",
+              };
+              setGpsStatus(messages[err.code] || "Location error — will keep trying");
             },
             {
               enableHighAccuracy: true,
@@ -483,3 +629,4 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   </body>
 </html>
+ 

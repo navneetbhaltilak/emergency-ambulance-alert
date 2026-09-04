@@ -225,6 +225,10 @@ def start_emergency():
     destination = data.get("destination", None)
     dest_lat = data.get("destination_lat")
     dest_lng = data.get("destination_lng")
+
+    if not destination or not destination.strip():
+        return jsonify({"error": "destination is required"}), 400
+
     # If a destination name was given but no coordinates, geocode it
     if destination and not (dest_lat and dest_lng):
         dest_lat, dest_lng = geocode_address(destination)
@@ -274,6 +278,8 @@ def start_emergency():
     return jsonify({
         "event_id": event_id,
         "destination": destination,
+        "destination_lat": dest_lat,
+        "destination_lng": dest_lng,
         "has_route": route_geojson is not None,
         "route_geojson": route_geojson
     }), 201
@@ -400,12 +406,81 @@ def get_ambulance_status(ambulance_id):
     cur = conn.cursor()
     cur.execute("SELECT status FROM ambulances WHERE ambulance_id = %s", (ambulance_id,))
     row = cur.fetchone()
+
+    if row is None:
+        cur.close()
+        conn.close()
+        return jsonify({"status": "not_found"}), 404
+
+    result = {"status": row["status"]}
+
+    if row["status"] == "emergency":
+        cur.execute("""
+            SELECT destination, destination_lat, destination_lng, route_geojson
+            FROM emergency_events
+            WHERE ambulance_id = %s AND status = 'active'
+            ORDER BY start_time DESC LIMIT 1
+        """, (ambulance_id,))
+        event = cur.fetchone()
+        if event:
+            route_geojson = event["route_geojson"]
+            if isinstance(route_geojson, str):
+                try:
+                    route_geojson = json.loads(route_geojson)
+                except Exception:
+                    pass
+            result["destination"] = event["destination"]
+            result["destination_lat"] = event["destination_lat"]
+            result["destination_lng"] = event["destination_lng"]
+            result["route_geojson"] = route_geojson
+
+    cur.close()
+    conn.close()
+    return jsonify(result), 200
+
+@app.route("/api/ambulance/emergency/active/<ambulance_id>", methods=["GET"])
+def get_active_emergency(ambulance_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT status, ST_Y(location::geometry) AS latitude, ST_X(location::geometry) AS longitude
+        FROM ambulances WHERE ambulance_id = %s
+    """, (ambulance_id,))
+    amb = cur.fetchone()
+
+    if amb is None:
+        cur.close()
+        conn.close()
+        return jsonify({"status": "not_found"}), 404
+
+    if amb["status"] != "emergency":
+        cur.close()
+        conn.close()
+        return jsonify({"status": amb["status"]}), 200
+
+    cur.execute("""
+        SELECT event_id, destination, destination_lat, destination_lng, route_geojson
+        FROM emergency_events
+        WHERE ambulance_id = %s AND status = 'active'
+        ORDER BY start_time DESC LIMIT 1
+    """, (ambulance_id,))
+    event = cur.fetchone()
     cur.close()
     conn.close()
 
-    if row is None:
-        return jsonify({"status": "not_found"}), 404
-    return jsonify({"status": row["status"]}), 200
+    if event is None:
+        return jsonify({"status": "emergency", "event": None, "latitude": amb["latitude"], "longitude": amb["longitude"]}), 200
+
+    return jsonify({
+        "status": "emergency",
+        "event_id": event["event_id"],
+        "destination": event["destination"],
+        "destination_lat": event["destination_lat"],
+        "destination_lng": event["destination_lng"],
+        "route_geojson": event["route_geojson"],
+        "latitude": amb["latitude"],
+        "longitude": amb["longitude"]
+    }), 200
 
 @app.route("/api/ambulance/emergency/end", methods=["POST"])
 def end_emergency():
