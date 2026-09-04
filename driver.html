@@ -1,5 +1,3 @@
-
-
 Driver · HTML
 <!doctype html>
 <html>
@@ -121,7 +119,8 @@ Driver · HTML
         color: #aaa;
         text-transform: uppercase;
       }
-      .amb-div-icon, .dest-div-icon {
+      .amb-div-icon,
+      .dest-div-icon {
         font-size: 22px;
         background: none;
         border: none;
@@ -193,7 +192,11 @@ Driver · HTML
       <div class="label" style="margin-top: 12px" id="pingCount">
         0 location updates sent
       </div>
-      <div class="label" id="gpsStatus" style="margin-top: 6px; color: #ffb4b4"></div>
+      <div
+        class="label"
+        id="gpsStatus"
+        style="margin-top: 6px; color: #ffb4b4"
+      ></div>
     </div>
 
     <script>
@@ -322,7 +325,9 @@ Driver · HTML
         });
         destMarker = L.marker(destPoint, { icon: destIcon })
           .addTo(routeMap)
-          .bindPopup(`Destination${destinationLabel ? ": " + destinationLabel : ""}`);
+          .bindPopup(
+            `Destination${destinationLabel ? ": " + destinationLabel : ""}`,
+          );
 
         const ambIcon = L.divIcon({
           html: "🚑",
@@ -389,7 +394,9 @@ Driver · HTML
           return;
         }
         if (!destination) {
-          alert("Enter a destination — it's needed to calculate the route, live distance, and estimated arrival time.");
+          alert(
+            "Enter a destination — it's needed to calculate the route, live distance, and estimated arrival time.",
+          );
           return;
         }
         if (!navigator.geolocation) {
@@ -495,9 +502,18 @@ Driver · HTML
         selectedDestLng = null;
 
         if (routeMap) {
-          if (routeLine) { routeMap.removeLayer(routeLine); routeLine = null; }
-          if (destMarker) { routeMap.removeLayer(destMarker); destMarker = null; }
-          if (ambulanceMapMarker) { routeMap.removeLayer(ambulanceMapMarker); ambulanceMapMarker = null; }
+          if (routeLine) {
+            routeMap.removeLayer(routeLine);
+            routeLine = null;
+          }
+          if (destMarker) {
+            routeMap.removeLayer(destMarker);
+            destMarker = null;
+          }
+          if (ambulanceMapMarker) {
+            routeMap.removeLayer(ambulanceMapMarker);
+            ambulanceMapMarker = null;
+          }
         }
         document.getElementById("routeMap").style.display = "none";
       };
@@ -536,7 +552,9 @@ Driver · HTML
             document.getElementById("pingCount").innerText =
               `${pingCounter} location updates sent`;
             setGpsStatus(
-              accuracy > 100 ? `Sent (weak GPS signal, ±${Math.round(accuracy)}m)` : "",
+              accuracy > 100
+                ? `Sent (weak GPS signal, ±${Math.round(accuracy)}m)`
+                : "",
             );
 
             if (ambulanceMapMarker) {
@@ -577,25 +595,24 @@ Driver · HTML
               const lat = pos.coords.latitude;
               const lng = pos.coords.longitude;
               const accuracy = pos.coords.accuracy;
-              console.log("RAW GPS reading:", lat, lng, "accuracy:", accuracy, "meters");
+              console.log(
+                "RAW GPS reading:",
+                lat,
+                lng,
+                "accuracy:",
+                accuracy,
+                "meters",
+              );
 
               const speedMs = pos.coords.speed;
               const speedKmh = speedMs ? Math.round(speedMs * 3.6) : 0;
 
               if (accuracy > 5000) {
                 consecutiveLowAccuracy++;
-                // Give the phone a couple of tries to get a better fix before
-                // sending anyway — an approximate ping beats a silent gap in
-                // the broadcast, which is the whole point of this app.
-                if (consecutiveLowAccuracy < 3) {
-                  setGpsStatus(
-                    `Weak GPS signal (±${Math.round(accuracy / 1000)}km) — retrying…`,
-                  );
-                  return;
-                }
                 setGpsStatus(
-                  `GPS is weak (±${Math.round(accuracy / 1000)}km) — sending anyway so alerts don't stop`,
+                  `Weak GPS signal (±${Math.round(accuracy / 1000)}km) — waiting for a better fix…`,
                 );
+                return; // never send an unusably imprecise reading, no matter how many retries
               }
 
               consecutiveLowAccuracy = 0;
@@ -608,7 +625,9 @@ Driver · HTML
                 2: "Location unavailable right now — check GPS/network",
                 3: "Location is taking too long — will keep trying",
               };
-              setGpsStatus(messages[err.code] || "Location error — will keep trying");
+              setGpsStatus(
+                messages[err.code] || "Location error — will keep trying",
+              );
             },
             {
               enableHighAccuracy: true,
@@ -629,4 +648,3 @@ Driver · HTML
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   </body>
 </html>
- 
