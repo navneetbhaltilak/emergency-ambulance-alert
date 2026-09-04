@@ -23,12 +23,16 @@ if firebase_creds_json:
 else:
     cred = credentials.Certificate("firebase-service-account.json")
 firebase_admin.initialize_app(cred)
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
 def get_db():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL environment variable is not set")
     max_retries = 3
     for attempt in range(max_retries):
         try:
             return psycopg2.connect(
-                "postgresql://postgres.afofefvzoiltroekxucc:Navneet%40123@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres",
+                DATABASE_URL,
                 cursor_factory=RealDictCursor
             )
         except psycopg2.OperationalError as e:
