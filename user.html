@@ -1,411 +1,704 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
+  <head>
     <title>Ambulance Alert</title>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
-        :root {
-            --ink: #101820;
-            --paper: #EDEFEA;
-            --line: #C9CDC3;
-            --green: #1E7A4D;
-            --amber: #D98E04;
-            --amber-bg: #FBEFD2;
-            --orange: #C1501C;
-            --orange-bg: #F6D9C4;
-            --red: #B3211B;
+      :root {
+        --ink: #101820;
+        --paper: #edefea;
+        --line: #c9cdc3;
+        --green: #1e7a4d;
+        --amber: #d98e04;
+        --amber-bg: #fbefd2;
+        --orange: #c1501c;
+        --orange-bg: #f6d9c4;
+        --red: #b3211b;
+      }
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100vh;
+        overflow-x: hidden;
+        font-family:
+          "IBM Plex Sans",
+          -apple-system,
+          BlinkMacSystemFont,
+          sans-serif;
+        background: var(--paper);
+        color: var(--ink);
+        transition:
+          background-color 0.6s ease,
+          color 0.6s ease;
+        --sweep-dur: 6s;
+        --ripple-dur: 4s;
+      }
+      body[data-level="info"] {
+        background: var(--amber-bg);
+        color: var(--ink);
+        --sweep-dur: 4s;
+        --ripple-dur: 2.6s;
+      }
+      body[data-level="high"] {
+        background: var(--orange-bg);
+        color: var(--ink);
+        --sweep-dur: 2.2s;
+        --ripple-dur: 1.6s;
+      }
+      body[data-level="critical"] {
+        background: var(--red);
+        color: #fff;
+        --sweep-dur: 1.2s;
+        --ripple-dur: 0.9s;
+      }
+
+      .app {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 22px 20px 36px;
+      }
+      .topbar {
+        width: 100%;
+        max-width: 340px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .brand {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .brand-mark {
+        font-size: 20px;
+      }
+      h1 {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0;
+      }
+      .mute-btn {
+        background: none;
+        border: none;
+        font-size: 17px;
+        line-height: 1;
+        cursor: pointer;
+        color: currentColor;
+        opacity: 0.65;
+        padding: 6px;
+      }
+      .mute-btn:active {
+        opacity: 0.35;
+      }
+
+      .radar-stage {
+        width: min(88vw, 340px);
+        margin-top: 18px;
+      }
+      .radar-stage svg {
+        width: 100%;
+        height: auto;
+        display: block;
+        overflow: visible;
+      }
+
+      .zone-ring {
+        fill: none;
+        stroke: currentColor;
+        opacity: 0.16;
+      }
+      #sweepWedge {
+        fill: currentColor;
+        opacity: 0.14;
+      }
+      #sweepGroup {
+        transform-origin: 150px 150px;
+        animation: spin var(--sweep-dur) linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
         }
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      }
 
-        html, body {
-            margin: 0;
-            min-height: 100vh;
-            overflow-x: hidden;
-            font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--paper);
-            color: var(--ink);
-            transition: background-color .6s ease, color .6s ease;
-            --sweep-dur: 6s;
-            --ripple-dur: 4s;
+      .ripple {
+        fill: none;
+        stroke: currentColor;
+        opacity: 0.5;
+        animation: rip var(--ripple-dur) ease-out infinite;
+      }
+      .ripple.r2 {
+        animation-delay: calc(var(--ripple-dur) / -3);
+      }
+      .ripple.r3 {
+        animation-delay: calc(var(--ripple-dur) / -3 * 2);
+      }
+      @keyframes rip {
+        from {
+          r: 6;
+          opacity: 0.55;
         }
-        body[data-level="info"] { background: var(--amber-bg); color: var(--ink); --sweep-dur: 4s; --ripple-dur: 2.6s; }
-        body[data-level="high"] { background: var(--orange-bg); color: var(--ink); --sweep-dur: 2.2s; --ripple-dur: 1.6s; }
-        body[data-level="critical"] { background: var(--red); color: #fff; --sweep-dur: 1.2s; --ripple-dur: .9s; }
-
-        .app {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 22px 20px 36px;
+        to {
+          r: 140;
+          opacity: 0;
         }
-        .topbar { width: 100%; max-width: 340px; display: flex; align-items: center; justify-content: space-between; }
-        .brand { display: flex; align-items: baseline; gap: 8px; }
-        .brand-mark { font-size: 20px; }
-        h1 { font-size: 16px; font-weight: 600; margin: 0; }
-        .mute-btn {
-            background: none; border: none; font-size: 17px; line-height: 1;
-            cursor: pointer; color: currentColor; opacity: .65; padding: 6px;
+      }
+
+      .tap-ripple {
+        fill: none;
+        stroke: currentColor;
+        animation: tapRip 0.8s ease-out forwards;
+      }
+      @keyframes tapRip {
+        from {
+          r: 6;
+          opacity: 0.6;
         }
-        .mute-btn:active { opacity: .35; }
-
-        .radar-stage { width: min(88vw, 340px); margin-top: 18px; }
-        .radar-stage svg { width: 100%; height: auto; display: block; overflow: visible; }
-
-        .zone-ring { fill: none; stroke: currentColor; opacity: .16; }
-        #sweepWedge { fill: currentColor; opacity: .14; }
-        #sweepGroup { transform-origin: 150px 150px; animation: spin var(--sweep-dur) linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        .ripple { fill: none; stroke: currentColor; opacity: .5; animation: rip var(--ripple-dur) ease-out infinite; }
-        .ripple.r2 { animation-delay: calc(var(--ripple-dur) / -3); }
-        .ripple.r3 { animation-delay: calc(var(--ripple-dur) / -3 * 2); }
-        @keyframes rip { from { r: 6; opacity: .55; } to { r: 140; opacity: 0; } }
-
-        .tap-ripple { fill: none; stroke: currentColor; animation: tapRip .8s ease-out forwards; }
-        @keyframes tapRip { from { r: 6; opacity: .6; } to { r: 130; opacity: 0; } }
-
-        .you-dot { fill: currentColor; cursor: pointer; }
-        .you-dot:active { opacity: .7; }
-
-        .amb-marker { fill: var(--red); transition: cx .8s ease, cy .8s ease; }
-        body[data-level="critical"] .amb-marker { animation: ambPulse 1s ease-in-out infinite; }
-        @keyframes ambPulse { 0%, 100% { r: 7; } 50% { r: 10; } }
-        .trail-dot { fill: var(--red); }
-
-        .radar-n { font-size: 10px; fill: currentColor; opacity: .5; }
-
-        .readout { width: 100%; max-width: 320px; text-align: center; margin-top: 8px; }
-        .level-tag { font-size: 16px; font-weight: 600; margin-top: 4px; }
-        .distance-row {
-            display: flex; align-items: baseline; justify-content: center; gap: 6px;
-            margin-top: 6px;
+        to {
+          r: 130;
+          opacity: 0;
         }
-        .distance-num { font-size: 44px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
-        .distance-unit { font-size: 13px; opacity: .65; }
-        .level-desc { font-size: 13px; opacity: .72; margin-top: 6px; line-height: 1.5; }
-        .dest-note { font-size: 12.5px; opacity: .65; margin-top: 10px; min-height: 16px; }
+      }
 
-        .hint { font-size: 11.5px; opacity: .45; margin-top: 22px; }
+      .you-dot {
+        fill: currentColor;
+        cursor: pointer;
+      }
+      .you-dot:active {
+        opacity: 0.7;
+      }
+
+      .amb-marker {
+        fill: var(--red);
+        transition:
+          cx 0.8s ease,
+          cy 0.8s ease;
+      }
+      body[data-level="critical"] .amb-marker {
+        animation: ambPulse 1s ease-in-out infinite;
+      }
+      @keyframes ambPulse {
+        0%,
+        100% {
+          r: 7;
+        }
+        50% {
+          r: 10;
+        }
+      }
+      .trail-dot {
+        fill: var(--red);
+      }
+
+      .radar-n {
+        font-size: 10px;
+        fill: currentColor;
+        opacity: 0.5;
+      }
+
+      .readout {
+        width: 100%;
+        max-width: 320px;
+        text-align: center;
+        margin-top: 8px;
+      }
+      .level-tag {
+        font-size: 16px;
+        font-weight: 600;
+        margin-top: 4px;
+      }
+      .distance-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: center;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .distance-num {
+        font-size: 44px;
+        font-weight: 700;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+      }
+      .distance-unit {
+        font-size: 13px;
+        opacity: 0.65;
+      }
+      .level-desc {
+        font-size: 13px;
+        opacity: 0.72;
+        margin-top: 6px;
+        line-height: 1.5;
+      }
+      .dest-note {
+        font-size: 12.5px;
+        opacity: 0.65;
+        margin-top: 10px;
+        min-height: 16px;
+      }
+
+      .hint {
+        font-size: 11.5px;
+        opacity: 0.45;
+        margin-top: 22px;
+      }
     </style>
-</head>
-<body data-level="setup">
+  </head>
+  <body data-level="setup">
     <div class="app">
-        <div class="topbar">
-            <div class="brand">
-                <span class="brand-mark">🚑</span>
-                <h1>Ambulance Alert</h1>
-            </div>
-            <button id="muteBtn" class="mute-btn" aria-label="Mute alert sounds" title="Mute alert sounds">🔊</button>
+      <div class="topbar">
+        <div class="brand">
+          <span class="brand-mark">🚑</span>
+          <h1>Ambulance Alert</h1>
         </div>
+        <button
+          id="muteBtn"
+          class="mute-btn"
+          aria-label="Mute alert sounds"
+          title="Mute alert sounds"
+        >
+          🔊
+        </button>
+      </div>
 
-        <div class="radar-stage">
-            <svg id="radarSvg" viewBox="0 0 300 300">
-                <g id="sweepGroup">
-                    <path id="sweepWedge" d="M150,150 L150,10 A140,140 0 0 1 240,42 Z"></path>
-                </g>
-                <circle class="zone-ring" cx="150" cy="150" r="140"></circle>
-                <circle class="zone-ring" cx="150" cy="150" r="88.6"></circle>
-                <circle class="zone-ring" cx="150" cy="150" r="44.3"></circle>
-                <circle class="ripple r1" cx="150" cy="150" r="6"></circle>
-                <circle class="ripple r2" cx="150" cy="150" r="6"></circle>
-                <circle class="ripple r3" cx="150" cy="150" r="6"></circle>
-                <g id="trailGroup"></g>
-                <circle id="radarAmb" class="amb-marker" cx="150" cy="150" r="0"></circle>
-                <circle id="youDot" class="you-dot" cx="150" cy="150" r="7"></circle>
-                <text class="radar-n" x="150" y="20" text-anchor="middle">N</text>
-            </svg>
+      <div class="radar-stage">
+        <svg id="radarSvg" viewBox="0 0 300 300">
+          <g id="sweepGroup">
+            <path
+              id="sweepWedge"
+              d="M150,150 L150,10 A140,140 0 0 1 240,42 Z"
+            ></path>
+          </g>
+          <circle class="zone-ring" cx="150" cy="150" r="140"></circle>
+          <circle class="zone-ring" cx="150" cy="150" r="88.6"></circle>
+          <circle class="zone-ring" cx="150" cy="150" r="44.3"></circle>
+          <circle class="ripple r1" cx="150" cy="150" r="6"></circle>
+          <circle class="ripple r2" cx="150" cy="150" r="6"></circle>
+          <circle class="ripple r3" cx="150" cy="150" r="6"></circle>
+          <g id="trailGroup"></g>
+          <circle
+            id="radarAmb"
+            class="amb-marker"
+            cx="150"
+            cy="150"
+            r="0"
+          ></circle>
+          <circle id="youDot" class="you-dot" cx="150" cy="150" r="7"></circle>
+          <text class="radar-n" x="150" y="20" text-anchor="middle">N</text>
+        </svg>
+      </div>
+
+      <div class="readout">
+        <div class="level-tag" id="levelLabel">Setting up…</div>
+        <div class="distance-row" id="distanceRow" style="display: none">
+          <span class="distance-num" id="distanceStat" data-val="0">0.0</span>
+          <span class="distance-unit">km away</span>
         </div>
-
-        <div class="readout">
-            <div class="level-tag" id="levelLabel">Setting up…</div>
-            <div class="distance-row" id="distanceRow" style="display:none;">
-                <span class="distance-num" id="distanceStat" data-val="0">0.0</span>
-                <span class="distance-unit">km away</span>
-            </div>
-            <div class="level-desc" id="levelDescription">Registering this device.</div>
-            <div class="dest-note" id="destinationNote"></div>
+        <div class="level-desc" id="levelDescription">
+          Registering this device.
         </div>
+        <div class="dest-note" id="destinationNote"></div>
+      </div>
 
-        <div class="hint" id="tapHint">Tap the dot to check the connection's still live.</div>
+      <div class="hint" id="tapHint">
+        Tap the dot to check the connection's still live.
+      </div>
     </div>
 
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-        import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+      import {
+        getMessaging,
+        getToken,
+        onMessage,
+      } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 
-        const API_BASE = "https://emergency-ambulance-alert.onrender.com";
+      const API_BASE = "https://emergency-ambulance-alert.onrender.com";
 
-        function getDeviceId() {
-            let deviceId = localStorage.getItem("ambulance_alert_device_id");
-            if (!deviceId) {
-                deviceId = 'device_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
-                localStorage.setItem("ambulance_alert_device_id", deviceId);
-            }
-            return deviceId;
+      function getDeviceId() {
+        let deviceId = localStorage.getItem("ambulance_alert_device_id");
+        if (!deviceId) {
+          deviceId =
+            "device_" +
+            Math.random().toString(36).substring(2) +
+            Date.now().toString(36);
+          localStorage.setItem("ambulance_alert_device_id", deviceId);
         }
+        return deviceId;
+      }
 
-        let USER_ID = null;
-        let userLat = null;
-        let userLng = null;
-        let currentLevel = "setup";
-        let trail = [];
+      let USER_ID = null;
+      let userLat = null;
+      let userLng = null;
+      let currentLevel = "setup";
+      let trail = [];
 
-        const MUTE_KEY = "ambulance_alert_muted";
-        let muted = localStorage.getItem(MUTE_KEY) === "1";
-        function updateMuteBtn() {
-            document.getElementById("muteBtn").textContent = muted ? "🔇" : "🔊";
-        }
+      const MUTE_KEY = "ambulance_alert_muted";
+      let muted = localStorage.getItem(MUTE_KEY) === "1";
+      function updateMuteBtn() {
+        document.getElementById("muteBtn").textContent = muted ? "🔇" : "🔊";
+      }
+      updateMuteBtn();
+      document.getElementById("muteBtn").addEventListener("click", () => {
+        muted = !muted;
+        localStorage.setItem(MUTE_KEY, muted ? "1" : "0");
         updateMuteBtn();
-        document.getElementById("muteBtn").addEventListener("click", () => {
-            muted = !muted;
-            localStorage.setItem(MUTE_KEY, muted ? "1" : "0");
-            updateMuteBtn();
+      });
+
+      let audioCtx = null;
+      function ensureAudio() {
+        if (!audioCtx) {
+          try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          } catch (e) {
+            /* audio not supported, fine — alerts still show visually */
+          }
+        } else if (audioCtx.state === "suspended") {
+          audioCtx.resume();
+        }
+      }
+      document.addEventListener("click", ensureAudio);
+      document.addEventListener("touchstart", ensureAudio, { passive: true });
+
+      function playTone(freq, duration, delay = 0) {
+        if (muted || !audioCtx || audioCtx.state !== "running") return;
+        setTimeout(() => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = "sine";
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(
+            0.22,
+            audioCtx.currentTime + 0.02,
+          );
+          gain.gain.exponentialRampToValueAtTime(
+            0.0001,
+            audioCtx.currentTime + duration / 1000,
+          );
+          osc.connect(gain).connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + duration / 1000 + 0.03);
+        }, delay);
+      }
+
+      function playAlertSound(level) {
+        if (level === "info") {
+          playTone(660, 180);
+        } else if (level === "high") {
+          playTone(740, 140, 0);
+          playTone(740, 140, 220);
+        } else if (level === "critical") {
+          playTone(880, 120, 0);
+          playTone(880, 120, 180);
+          playTone(880, 120, 360);
+        }
+      }
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyCCDoW8qZ70Wc6qw6WWgmH10Wl1KvZZWTA",
+        authDomain: "emergency-ambulance-alert.firebaseapp.com",
+        projectId: "emergency-ambulance-alert",
+        storageBucket: "emergency-ambulance-alert.firebasestorage.app",
+        messagingSenderId: "487464125337",
+        appId: "1:487464125337:web:d69f15c29f32921b1f4908",
+      };
+      const app = initializeApp(firebaseConfig);
+      const messaging = getMessaging(app);
+
+      const alertSounds = {
+        high: new Audio("high.mp3"),
+        critical: new Audio("critical.mp3"),
+      };
+
+      onMessage(messaging, (payload) => {
+        console.log("Message received in foreground:", payload);
+        const level = payload.data?.level;
+        if (level && alertSounds[level]) {
+          alertSounds[level]
+            .play()
+            .catch((err) => console.log("Sound play blocked:", err));
+        }
+      });
+
+      function setLevel(level, label, desc) {
+        currentLevel = level;
+        document.body.dataset.level = level;
+        document.getElementById("levelLabel").innerText = label;
+        document.getElementById("levelDescription").innerText = desc;
+      }
+
+      async function initializeAlerts() {
+        try {
+          setLevel("setup", "Setting up…", "Registering this device.");
+          const deviceId = getDeviceId();
+          const regResp = await fetch(`${API_BASE}/api/users/register-device`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ device_id: deviceId }),
+          });
+          const regData = await regResp.json();
+          USER_ID = regData.user_id;
+
+          setLevel(
+            "setup",
+            "Setting up…",
+            "Asking for notification permission.",
+          );
+          const permission = await Notification.requestPermission();
+          if (permission !== "granted") {
+            setLevel(
+              "setup",
+              "Notifications are off",
+              "Turn them on in your browser settings, then reload this page.",
+            );
+            return;
+          }
+
+          const registration = await navigator.serviceWorker.register(
+            "firebase-messaging-sw.js",
+          );
+          await navigator.serviceWorker.ready;
+
+          const token = await getToken(messaging, {
+            vapidKey:
+              "BPWOIImb1JqzHCIHgBIVb766CVEJ2Ka457SHGhDK7d41IKoftXgWQUMokd1fYa9ofEWxT2_kX6mDeUI2jNFJbFU",
+            serviceWorkerRegistration: registration,
+          });
+          await fetch(`${API_BASE}/api/users/update-token`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: USER_ID, fcm_token: token }),
+          });
+
+          setLevel("setup", "Setting up…", "Asking for your location.");
+          if (!navigator.geolocation) {
+            setLevel(
+              "setup",
+              "Location not supported",
+              "This device can't share location, so we can't measure distance.",
+            );
+            return;
+          }
+
+          navigator.geolocation.watchPosition(
+            async (pos) => {
+              userLat = pos.coords.latitude;
+              userLng = pos.coords.longitude;
+
+              await fetch(`${API_BASE}/api/users/location`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  user_id: USER_ID,
+                  latitude: userLat,
+                  longitude: userLng,
+                }),
+              });
+
+              if (currentLevel === "setup") {
+                showIdleState();
+              }
+            },
+            (err) => {
+              console.error("Location error:", err);
+              setLevel(
+                "setup",
+                "Location is off",
+                "Turn it on in your browser settings, then reload this page.",
+              );
+            },
+            { enableHighAccuracy: true, maximumAge: 5000 },
+          );
+        } catch (err) {
+          setLevel("setup", "Setup failed", "Reload the page to try again.");
+          console.error(err);
+        }
+      }
+      initializeAlerts();
+
+      const socket = io(API_BASE);
+
+      socket.on("ambulance_update", (data) => {
+        if (userLat === null || userLng === null) return;
+        const distanceKm = haversineDistance(
+          userLat,
+          userLng,
+          data.latitude,
+          data.longitude,
+        );
+        const bearing = bearingTo(
+          userLat,
+          userLng,
+          data.latitude,
+          data.longitude,
+        );
+        updateLive(distanceKm, data.destination, bearing);
+      });
+      socket.on("ambulance_ended", () => showIdleState());
+
+      function haversineDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371;
+        const dLat = ((lat2 - lat1) * Math.PI) / 180;
+        const dLon = ((lon2 - lon1) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos((lat1 * Math.PI) / 180) *
+            Math.cos((lat2 * Math.PI) / 180) *
+            Math.sin(dLon / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+      function bearingTo(lat1, lon1, lat2, lon2) {
+        const toRad = (d) => (d * Math.PI) / 180;
+        const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
+        const x =
+          Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+          Math.sin(toRad(lat1)) *
+            Math.cos(toRad(lat2)) *
+            Math.cos(toRad(lon2 - lon1));
+        return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+      }
+      function radarScale(km) {
+        return 140 * Math.sqrt(Math.min(km, 5) / 5);
+      }
+
+      function tweenNumber(el, to, duration = 500) {
+        const from = parseFloat(el.dataset.val || to);
+        const start = performance.now();
+        el.dataset.val = to;
+        function step(now) {
+          const t = Math.min((now - start) / duration, 1);
+          const eased = 1 - Math.pow(1 - t, 3);
+          el.textContent = (from + (to - from) * eased).toFixed(1);
+          if (t < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+      }
+
+      function renderTrail() {
+        const g = document.getElementById("trailGroup");
+        g.innerHTML = "";
+        trail.forEach((p, i) => {
+          const c = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "circle",
+          );
+          c.setAttribute("cx", p.x);
+          c.setAttribute("cy", p.y);
+          c.setAttribute("r", 4 - i * 0.6);
+          c.setAttribute("opacity", 0.4 - i * 0.1);
+          c.setAttribute("class", "trail-dot");
+          g.appendChild(c);
         });
+      }
 
-        let audioCtx = null;
-        function ensureAudio() {
-            if (!audioCtx) {
-                try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
-                catch (e) { /* audio not supported, fine — alerts still show visually */ }
-            } else if (audioCtx.state === "suspended") {
-                audioCtx.resume();
-            }
-        }
-        document.addEventListener("click", ensureAudio);
-        document.addEventListener("touchstart", ensureAudio, { passive: true });
-
-        function playTone(freq, duration, delay = 0) {
-            if (muted || !audioCtx || audioCtx.state !== "running") return;
-            setTimeout(() => {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.type = "sine";
-                osc.frequency.value = freq;
-                gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.22, audioCtx.currentTime + 0.02);
-                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration / 1000);
-                osc.connect(gain).connect(audioCtx.destination);
-                osc.start();
-                osc.stop(audioCtx.currentTime + duration / 1000 + 0.03);
-            }, delay);
+      function updateLive(distanceKm, destination, bearing) {
+        if (distanceKm > 5) {
+          showIdleState();
+          return;
         }
 
-        function playAlertSound(level) {
-            if (level === "info") {
-                playTone(660, 180);
-            } else if (level === "high") {
-                playTone(740, 140, 0);
-                playTone(740, 140, 220);
-            } else if (level === "critical") {
-                playTone(880, 120, 0);
-                playTone(880, 120, 180);
-                playTone(880, 120, 360);
-            }
+        let level, label, desc;
+        if (distanceKm <= 0.5) {
+          level = "critical";
+          label = "Give way now";
+          desc = "The ambulance is very close.";
+        } else if (distanceKm <= 2) {
+          level = "high";
+          label = "Prepare to give way";
+          desc = "The ambulance is getting near.";
+        } else {
+          level = "info";
+          label = "Ambulance approaching";
+          desc = "Stay alert — no need to move yet.";
         }
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyCCDoW8qZ70Wc6qw6WWgmH10Wl1KvZZWTA",
-            authDomain: "emergency-ambulance-alert.firebaseapp.com",
-            projectId: "emergency-ambulance-alert",
-            storageBucket: "emergency-ambulance-alert.firebasestorage.app",
-            messagingSenderId: "487464125337",
-            appId: "1:487464125337:web:d69f15c29f32921b1f4908"
-        };
-        const app = initializeApp(firebaseConfig);
-        const messaging = getMessaging(app);
-
-        function setLevel(level, label, desc) {
-            currentLevel = level;
-            document.body.dataset.level = level;
-            document.getElementById("levelLabel").innerText = label;
-            document.getElementById("levelDescription").innerText = desc;
+        const wasCritical = currentLevel === "critical";
+        const previousLevel = currentLevel;
+        setLevel(level, label, desc);
+        if (level !== previousLevel) {
+          playAlertSound(level);
         }
+        document.getElementById("distanceRow").style.display = "flex";
+        document.getElementById("tapHint").style.display = "none";
+        tweenNumber(document.getElementById("distanceStat"), distanceKm);
 
-        async function initializeAlerts() {
-            try {
-                setLevel("setup", "Setting up…", "Registering this device.");
-                const deviceId = getDeviceId();
-                const regResp = await fetch(`${API_BASE}/api/users/register-device`, {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({ device_id: deviceId })
-                });
-                const regData = await regResp.json();
-                USER_ID = regData.user_id;
+        const r = radarScale(distanceKm);
+        const rad = (bearing * Math.PI) / 180;
+        const mx = 150 + r * Math.sin(rad);
+        const my = 150 - r * Math.cos(rad);
 
-                setLevel("setup", "Setting up…", "Asking for notification permission.");
-                const permission = await Notification.requestPermission();
-                if (permission !== "granted") {
-                    setLevel("setup", "Notifications are off", "Turn them on in your browser settings, then reload this page.");
-                    return;
-                }
-
-                const registration = await navigator.serviceWorker.register('firebase-messaging-sw.js');
-                await navigator.serviceWorker.ready;
-
-                const token = await getToken(messaging, {
-                    vapidKey: "BPWOIImb1JqzHCIHgBIVb766CVEJ2Ka457SHGhDK7d41IKoftXgWQUMokd1fYa9ofEWxT2_kX6mDeUI2jNFJbFU",
-                    serviceWorkerRegistration: registration
-                });
-                await fetch(`${API_BASE}/api/users/update-token`, {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({ user_id: USER_ID, fcm_token: token })
-                });
-
-                setLevel("setup", "Setting up…", "Asking for your location.");
-                if (!navigator.geolocation) {
-                    setLevel("setup", "Location not supported", "This device can't share location, so we can't measure distance.");
-                    return;
-                }
-
-                navigator.geolocation.watchPosition(async (pos) => {
-                    userLat = pos.coords.latitude;
-                    userLng = pos.coords.longitude;
-
-                    await fetch(`${API_BASE}/api/users/location`, {
-                        method: "PUT",
-                        headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify({ user_id: USER_ID, latitude: userLat, longitude: userLng })
-                    });
-
-                    if (currentLevel === "setup") {
-                        showIdleState();
-                    }
-                }, (err) => {
-                    console.error("Location error:", err);
-                    setLevel("setup", "Location is off", "Turn it on in your browser settings, then reload this page.");
-                }, { enableHighAccuracy: true, maximumAge: 5000 });
-
-            } catch (err) {
-                setLevel("setup", "Setup failed", "Reload the page to try again.");
-                console.error(err);
-            }
+        const amb = document.getElementById("radarAmb");
+        if (amb.getAttribute("r") === "0") {
+          amb.setAttribute("r", 7);
         }
-        initializeAlerts();
-
-        const socket = io(API_BASE);
-
-        socket.on('ambulance_update', (data) => {
-            if (userLat === null || userLng === null) return;
-            const distanceKm = haversineDistance(userLat, userLng, data.latitude, data.longitude);
-            const bearing = bearingTo(userLat, userLng, data.latitude, data.longitude);
-            updateLive(distanceKm, data.destination, bearing);
+        trail.unshift({
+          x: parseFloat(amb.getAttribute("cx")),
+          y: parseFloat(amb.getAttribute("cy")),
         });
-        socket.on('ambulance_ended', () => showIdleState());
+        trail = trail.slice(0, 4);
+        renderTrail();
 
-        function haversineDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371;
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(dLat/2) ** 2 +
-                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                      Math.sin(dLon/2) ** 2;
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        }
-        function bearingTo(lat1, lon1, lat2, lon2) {
-            const toRad = d => d * Math.PI / 180;
-            const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
-            const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
-                      Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
-            return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-        }
-        function radarScale(km) { return 140 * Math.sqrt(Math.min(km, 5) / 5); }
+        amb.setAttribute("cx", mx);
+        amb.setAttribute("cy", my);
 
-        function tweenNumber(el, to, duration = 500) {
-            const from = parseFloat(el.dataset.val || to);
-            const start = performance.now();
-            el.dataset.val = to;
-            function step(now) {
-                const t = Math.min((now - start) / duration, 1);
-                const eased = 1 - Math.pow(1 - t, 3);
-                el.textContent = (from + (to - from) * eased).toFixed(1);
-                if (t < 1) requestAnimationFrame(step);
-            }
-            requestAnimationFrame(step);
+        if (level === "critical" && !wasCritical && "vibrate" in navigator) {
+          try {
+            navigator.vibrate([200, 100, 200]);
+          } catch (e) {}
         }
 
-        function renderTrail() {
-            const g = document.getElementById("trailGroup");
-            g.innerHTML = "";
-            trail.forEach((p, i) => {
-                const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-                c.setAttribute("cx", p.x);
-                c.setAttribute("cy", p.y);
-                c.setAttribute("r", 4 - i * 0.6);
-                c.setAttribute("opacity", 0.4 - i * 0.1);
-                c.setAttribute("class", "trail-dot");
-                g.appendChild(c);
-            });
-        }
+        document.getElementById("destinationNote").innerText = destination
+          ? `Heading toward ${destination}`
+          : "";
+      }
 
-        function updateLive(distanceKm, destination, bearing) {
-            if (distanceKm > 5) { showIdleState(); return; }
+      function showIdleState() {
+        setLevel(
+          "idle",
+          "All clear",
+          "No ambulances nearby. We're still watching your area.",
+        );
+        document.getElementById("distanceRow").style.display = "none";
+        document.getElementById("destinationNote").innerText = "";
+        document.getElementById("tapHint").style.display = "block";
+        document.getElementById("radarAmb").setAttribute("r", 0);
+        trail = [];
+        renderTrail();
+      }
 
-            let level, label, desc;
-            if (distanceKm <= 0.5) {
-                level = "critical"; label = "Give way now"; desc = "The ambulance is very close.";
-            } else if (distanceKm <= 2) {
-                level = "high"; label = "Prepare to give way"; desc = "The ambulance is getting near.";
-            } else {
-                level = "info"; label = "Ambulance approaching"; desc = "Stay alert — no need to move yet.";
-            }
-
-            const wasCritical = currentLevel === "critical";
-            const previousLevel = currentLevel;
-            setLevel(level, label, desc);
-            if (level !== previousLevel) { playAlertSound(level); }
-            document.getElementById("distanceRow").style.display = "flex";
-            document.getElementById("tapHint").style.display = "none";
-            tweenNumber(document.getElementById("distanceStat"), distanceKm);
-
-            const r = radarScale(distanceKm);
-            const rad = bearing * Math.PI / 180;
-            const mx = 150 + r * Math.sin(rad);
-            const my = 150 - r * Math.cos(rad);
-
-            const amb = document.getElementById("radarAmb");
-            if (amb.getAttribute("r") === "0") { amb.setAttribute("r", 7); }
-            trail.unshift({ x: parseFloat(amb.getAttribute("cx")), y: parseFloat(amb.getAttribute("cy")) });
-            trail = trail.slice(0, 4);
-            renderTrail();
-
-            amb.setAttribute("cx", mx);
-            amb.setAttribute("cy", my);
-
-            if (level === "critical" && !wasCritical && "vibrate" in navigator) {
-                try { navigator.vibrate([200, 100, 200]); } catch (e) {}
-            }
-
-            document.getElementById("destinationNote").innerText =
-                destination ? `Heading toward ${destination}` : "";
-        }
-
-        function showIdleState() {
-            setLevel("idle", "All clear", "No ambulances nearby. We're still watching your area.");
-            document.getElementById("distanceRow").style.display = "none";
-            document.getElementById("destinationNote").innerText = "";
-            document.getElementById("tapHint").style.display = "block";
-            document.getElementById("radarAmb").setAttribute("r", 0);
-            trail = [];
-            renderTrail();
-        }
-
-        function spawnTapRipple() {
-            const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-            c.setAttribute("cx", 150);
-            c.setAttribute("cy", 150);
-            c.setAttribute("class", "tap-ripple");
-            document.getElementById("radarSvg").appendChild(c);
-            c.addEventListener("animationend", () => c.remove());
-        }
-        document.getElementById("youDot").addEventListener("click", spawnTapRipple);
+      function spawnTapRipple() {
+        const c = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "circle",
+        );
+        c.setAttribute("cx", 150);
+        c.setAttribute("cy", 150);
+        c.setAttribute("class", "tap-ripple");
+        document.getElementById("radarSvg").appendChild(c);
+        c.addEventListener("animationend", () => c.remove());
+      }
+      document
+        .getElementById("youDot")
+        .addEventListener("click", spawnTapRipple);
     </script>
-</body>
+  </body>
 </html>
