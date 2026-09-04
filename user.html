@@ -43,9 +43,15 @@
             align-items: center;
             padding: 22px 20px 36px;
         }
+        .topbar { width: 100%; max-width: 340px; display: flex; align-items: center; justify-content: space-between; }
         .brand { display: flex; align-items: baseline; gap: 8px; }
         .brand-mark { font-size: 20px; }
         h1 { font-size: 16px; font-weight: 600; margin: 0; }
+        .mute-btn {
+            background: none; border: none; font-size: 17px; line-height: 1;
+            cursor: pointer; color: currentColor; opacity: .65; padding: 6px;
+        }
+        .mute-btn:active { opacity: .35; }
 
         .radar-stage { width: min(88vw, 340px); margin-top: 18px; }
         .radar-stage svg { width: 100%; height: auto; display: block; overflow: visible; }
@@ -89,9 +95,12 @@
 </head>
 <body data-level="setup">
     <div class="app">
-        <div class="brand">
-            <span class="brand-mark">🚑</span>
-            <h1>Ambulance Alert</h1>
+        <div class="topbar">
+            <div class="brand">
+                <span class="brand-mark">🚑</span>
+                <h1>Ambulance Alert</h1>
+            </div>
+            <button id="muteBtn" class="mute-btn" aria-label="Mute alert sounds" title="Mute alert sounds">🔊</button>
         </div>
 
         <div class="radar-stage">
@@ -146,6 +155,59 @@
         let userLng = null;
         let currentLevel = "setup";
         let trail = [];
+
+        const MUTE_KEY = "ambulance_alert_muted";
+        let muted = localStorage.getItem(MUTE_KEY) === "1";
+        function updateMuteBtn() {
+            document.getElementById("muteBtn").textContent = muted ? "🔇" : "🔊";
+        }
+        updateMuteBtn();
+        document.getElementById("muteBtn").addEventListener("click", () => {
+            muted = !muted;
+            localStorage.setItem(MUTE_KEY, muted ? "1" : "0");
+            updateMuteBtn();
+        });
+
+        let audioCtx = null;
+        function ensureAudio() {
+            if (!audioCtx) {
+                try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+                catch (e) { /* audio not supported, fine — alerts still show visually */ }
+            } else if (audioCtx.state === "suspended") {
+                audioCtx.resume();
+            }
+        }
+        document.addEventListener("click", ensureAudio);
+        document.addEventListener("touchstart", ensureAudio, { passive: true });
+
+        function playTone(freq, duration, delay = 0) {
+            if (muted || !audioCtx || audioCtx.state !== "running") return;
+            setTimeout(() => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = "sine";
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.22, audioCtx.currentTime + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration / 1000);
+                osc.connect(gain).connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration / 1000 + 0.03);
+            }, delay);
+        }
+
+        function playAlertSound(level) {
+            if (level === "info") {
+                playTone(660, 180);
+            } else if (level === "high") {
+                playTone(740, 140, 0);
+                playTone(740, 140, 220);
+            } else if (level === "critical") {
+                playTone(880, 120, 0);
+                playTone(880, 120, 180);
+                playTone(880, 120, 360);
+            }
+        }
 
         const firebaseConfig = {
             apiKey: "AIzaSyCCDoW8qZ70Wc6qw6WWgmH10Wl1KvZZWTA",
@@ -296,7 +358,9 @@
             }
 
             const wasCritical = currentLevel === "critical";
+            const previousLevel = currentLevel;
             setLevel(level, label, desc);
+            if (level !== previousLevel) { playAlertSound(level); }
             document.getElementById("distanceRow").style.display = "flex";
             document.getElementById("tapHint").style.display = "none";
             tweenNumber(document.getElementById("distanceStat"), distanceKm);
