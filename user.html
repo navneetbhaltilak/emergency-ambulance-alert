@@ -1,71 +1,128 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Ambulance Alert - Citizen App</title>
+    <title>Ambulance Alert</title>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            margin: 0; font-family: -apple-system, sans-serif;
-            background: #f4f5f7; min-height: 100vh;
-            display: flex; flex-direction: column; align-items: center;
-            padding: 24px; box-sizing: border-box;
+        :root {
+            --ink: #101820;
+            --paper: #EDEFEA;
+            --line: #C9CDC3;
+            --green: #1E7A4D;
+            --amber: #D98E04;
+            --amber-bg: #FBEFD2;
+            --orange: #C1501C;
+            --orange-bg: #F6D9C4;
+            --red: #B3211B;
         }
-        h1 { font-size: 20px; margin-bottom: 4px; color: #1a1a2e; }
-        .subtitle { color: #777; font-size: 13px; margin-bottom: 24px; text-align: center; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
-        #setupCard {
-            background: white; border-radius: 14px; padding: 24px;
-            width: 100%; max-width: 340px; box-sizing: border-box;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08); text-align: center;
+        html, body {
+            margin: 0;
+            min-height: 100vh;
+            overflow-x: hidden;
+            font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--paper);
+            color: var(--ink);
+            transition: background-color .6s ease, color .6s ease;
+            --sweep-dur: 6s;
+            --ripple-dur: 4s;
         }
-        button {
-            background: #e63946; color: white; border: none;
-            padding: 14px 20px; border-radius: 10px; font-size: 16px;
-            font-weight: 600; cursor: pointer; width: 100%;
-        }
+        body[data-level="info"] { background: var(--amber-bg); color: var(--ink); --sweep-dur: 4s; --ripple-dur: 2.6s; }
+        body[data-level="high"] { background: var(--orange-bg); color: var(--ink); --sweep-dur: 2.2s; --ripple-dur: 1.6s; }
+        body[data-level="critical"] { background: var(--red); color: #fff; --sweep-dur: 1.2s; --ripple-dur: .9s; }
 
-        #liveCard {
-            display: none; width: 100%; max-width: 340px;
-            border-radius: 16px; padding: 28px; box-sizing: border-box;
-            text-align: center; transition: background 0.3s ease;
+        .app {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 22px 20px 36px;
         }
-        #liveCard.info { background: #fff3cd; }
-        #liveCard.high { background: #ffddb0; }
-        #liveCard.critical { background: #f8d7da; }
-        #liveCard.clear { background: #d4edda; }
+        .brand { display: flex; align-items: baseline; gap: 8px; }
+        .brand-mark { font-size: 20px; }
+        h1 { font-size: 16px; font-weight: 600; margin: 0; }
 
-        .bigStat { font-size: 40px; font-weight: 800; margin: 8px 0; }
-        .levelLabel { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
-        .smallNote { font-size: 12px; color: #555; margin-top: 12px; }
+        .radar-stage { width: min(88vw, 340px); margin-top: 18px; }
+        .radar-stage svg { width: 100%; height: auto; display: block; overflow: visible; }
 
-        #idleState {
-            display: none; width: 100%; max-width: 340px;
-            text-align: center; color: #888; margin-top: 40px;
+        .zone-ring { fill: none; stroke: currentColor; opacity: .16; }
+        #sweepWedge { fill: currentColor; opacity: .14; }
+        #sweepGroup { transform-origin: 150px 150px; animation: spin var(--sweep-dur) linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .ripple { fill: none; stroke: currentColor; opacity: .5; animation: rip var(--ripple-dur) ease-out infinite; }
+        .ripple.r2 { animation-delay: calc(var(--ripple-dur) / -3); }
+        .ripple.r3 { animation-delay: calc(var(--ripple-dur) / -3 * 2); }
+        @keyframes rip { from { r: 6; opacity: .55; } to { r: 140; opacity: 0; } }
+
+        .tap-ripple { fill: none; stroke: currentColor; animation: tapRip .8s ease-out forwards; }
+        @keyframes tapRip { from { r: 6; opacity: .6; } to { r: 130; opacity: 0; } }
+
+        .you-dot { fill: currentColor; cursor: pointer; }
+        .you-dot:active { opacity: .7; }
+
+        .amb-marker { fill: var(--red); transition: cx .8s ease, cy .8s ease; }
+        body[data-level="critical"] .amb-marker { animation: ambPulse 1s ease-in-out infinite; }
+        @keyframes ambPulse { 0%, 100% { r: 7; } 50% { r: 10; } }
+        .trail-dot { fill: var(--red); }
+
+        .radar-n { font-size: 10px; fill: currentColor; opacity: .5; }
+
+        .readout { width: 100%; max-width: 320px; text-align: center; margin-top: 8px; }
+        .level-tag { font-size: 16px; font-weight: 600; margin-top: 4px; }
+        .distance-row {
+            display: flex; align-items: baseline; justify-content: center; gap: 6px;
+            margin-top: 6px;
         }
-        .checkmark { font-size: 48px; margin-bottom: 8px; }
+        .distance-num { font-size: 44px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+        .distance-unit { font-size: 13px; opacity: .65; }
+        .level-desc { font-size: 13px; opacity: .72; margin-top: 6px; line-height: 1.5; }
+        .dest-note { font-size: 12.5px; opacity: .65; margin-top: 10px; min-height: 16px; }
+
+        .hint { font-size: 11.5px; opacity: .45; margin-top: 22px; }
     </style>
 </head>
-<body>
-    <h1>🚑 Ambulance Alert</h1>
-    <div class="subtitle">Get notified when an emergency ambulance is approaching your location</div>
+<body data-level="setup">
+    <div class="app">
+        <div class="brand">
+            <span class="brand-mark">🚑</span>
+            <h1>Ambulance Alert</h1>
+        </div>
 
-    <div id="setupCard">
-        <p style="font-size:14px; color:#555;">
-            Setting up ambulance alerts for your area...
-        </p>
-    </div>
+        <div class="radar-stage">
+            <svg id="radarSvg" viewBox="0 0 300 300">
+                <g id="sweepGroup">
+                    <path id="sweepWedge" d="M150,150 L150,10 A140,140 0 0 1 240,42 Z"></path>
+                </g>
+                <circle class="zone-ring" cx="150" cy="150" r="140"></circle>
+                <circle class="zone-ring" cx="150" cy="150" r="88.6"></circle>
+                <circle class="zone-ring" cx="150" cy="150" r="44.3"></circle>
+                <circle class="ripple r1" cx="150" cy="150" r="6"></circle>
+                <circle class="ripple r2" cx="150" cy="150" r="6"></circle>
+                <circle class="ripple r3" cx="150" cy="150" r="6"></circle>
+                <g id="trailGroup"></g>
+                <circle id="radarAmb" class="amb-marker" cx="150" cy="150" r="0"></circle>
+                <circle id="youDot" class="you-dot" cx="150" cy="150" r="7"></circle>
+                <text class="radar-n" x="150" y="20" text-anchor="middle">N</text>
+            </svg>
+        </div>
 
-    <div id="liveCard">
-        <div class="levelLabel" id="levelLabel">Ambulance Approaching</div>
-        <div class="bigStat" id="distanceStat">-- km</div>
-        <div id="levelDescription">away</div>
-        <div class="smallNote" id="destinationNote"></div>
-    </div>
+        <div class="readout">
+            <div class="level-tag" id="levelLabel">Setting up…</div>
+            <div class="distance-row" id="distanceRow" style="display:none;">
+                <span class="distance-num" id="distanceStat" data-val="0">0.0</span>
+                <span class="distance-unit">km away</span>
+            </div>
+            <div class="level-desc" id="levelDescription">Registering this device.</div>
+            <div class="dest-note" id="destinationNote"></div>
+        </div>
 
-    <div id="idleState">
-        <div class="checkmark">✅</div>
-        <div>No active ambulances nearby</div>
+        <div class="hint" id="tapHint">Tap the dot to check the connection's still live.</div>
     </div>
 
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -74,16 +131,21 @@
         import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 
         const API_BASE = "https://emergency-ambulance-alert.onrender.com";
-        function getDeviceId() {
-    let deviceId = localStorage.getItem("ambulance_alert_device_id");
-    if (!deviceId) {
-        deviceId = 'device_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
-        localStorage.setItem("ambulance_alert_device_id", deviceId);
-    }
-    return deviceId;
-}
 
-let USER_ID = null; // will be set after device registration
+        function getDeviceId() {
+            let deviceId = localStorage.getItem("ambulance_alert_device_id");
+            if (!deviceId) {
+                deviceId = 'device_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+                localStorage.setItem("ambulance_alert_device_id", deviceId);
+            }
+            return deviceId;
+        }
+
+        let USER_ID = null;
+        let userLat = null;
+        let userLng = null;
+        let currentLevel = "setup";
+        let trail = [];
 
         const firebaseConfig = {
             apiKey: "AIzaSyCCDoW8qZ70Wc6qw6WWgmH10Wl1KvZZWTA",
@@ -93,15 +155,19 @@ let USER_ID = null; // will be set after device registration
             messagingSenderId: "487464125337",
             appId: "1:487464125337:web:d69f15c29f32921b1f4908"
         };
-
         const app = initializeApp(firebaseConfig);
         const messaging = getMessaging(app);
 
-        let userLat = null;
-        let userLng = null;
+        function setLevel(level, label, desc) {
+            currentLevel = level;
+            document.body.dataset.level = level;
+            document.getElementById("levelLabel").innerText = label;
+            document.getElementById("levelDescription").innerText = desc;
+        }
 
         async function initializeAlerts() {
             try {
+                setLevel("setup", "Setting up…", "Registering this device.");
                 const deviceId = getDeviceId();
                 const regResp = await fetch(`${API_BASE}/api/users/register-device`, {
                     method: "POST",
@@ -111,10 +177,10 @@ let USER_ID = null; // will be set after device registration
                 const regData = await regResp.json();
                 USER_ID = regData.user_id;
 
-                // 1. Notification permission + FCM token
+                setLevel("setup", "Setting up…", "Asking for notification permission.");
                 const permission = await Notification.requestPermission();
                 if (permission !== "granted") {
-                    alert("Notification permission is required for alerts.");
+                    setLevel("setup", "Notifications are off", "Turn them on in your browser settings, then reload this page.");
                     return;
                 }
 
@@ -125,16 +191,15 @@ let USER_ID = null; // will be set after device registration
                     vapidKey: "BPWOIImb1JqzHCIHgBIVb766CVEJ2Ka457SHGhDK7d41IKoftXgWQUMokd1fYa9ofEWxT2_kX6mDeUI2jNFJbFU",
                     serviceWorkerRegistration: registration
                 });
-
                 await fetch(`${API_BASE}/api/users/update-token`, {
                     method: "POST",
                     headers: {"Content-Type": "application/json"},
                     body: JSON.stringify({ user_id: USER_ID, fcm_token: token })
                 });
 
-                // 2. Location permission + continuous tracking
+                setLevel("setup", "Setting up…", "Asking for your location.");
                 if (!navigator.geolocation) {
-                    alert("Geolocation not supported on this device.");
+                    setLevel("setup", "Location not supported", "This device can't share location, so we can't measure distance.");
                     return;
                 }
 
@@ -147,36 +212,31 @@ let USER_ID = null; // will be set after device registration
                         headers: {"Content-Type": "application/json"},
                         body: JSON.stringify({ user_id: USER_ID, latitude: userLat, longitude: userLng })
                     });
+
+                    if (currentLevel === "setup") {
+                        showIdleState();
+                    }
                 }, (err) => {
                     console.error("Location error:", err);
+                    setLevel("setup", "Location is off", "Turn it on in your browser settings, then reload this page.");
                 }, { enableHighAccuracy: true, maximumAge: 5000 });
 
-                document.getElementById("setupCard").style.display = "none";
-                document.getElementById("idleState").style.display = "block";
-
-                } catch (err) {
-                    alert("Setup failed: " + err.message);
-                    console.error(err);
-                }
+            } catch (err) {
+                setLevel("setup", "Setup failed", "Reload the page to try again.");
+                console.error(err);
             }
+        }
+        initializeAlerts();
 
-            // Run automatically on page load 
-            initializeAlerts();
-
-        // 3. Live ambulance updates via SocketIO
         const socket = io(API_BASE);
 
         socket.on('ambulance_update', (data) => {
-            console.log("Received ambulance_update, userLat:", userLat, "userLng:", userLng);
             if (userLat === null || userLng === null) return;
-
             const distanceKm = haversineDistance(userLat, userLng, data.latitude, data.longitude);
-            updateLiveCard(distanceKm, data.destination);
+            const bearing = bearingTo(userLat, userLng, data.latitude, data.longitude);
+            updateLive(distanceKm, data.destination, bearing);
         });
-
-        socket.on('ambulance_ended', () => {
-            showIdleState();
-        });
+        socket.on('ambulance_ended', () => showIdleState());
 
         function haversineDistance(lat1, lon1, lat2, lon2) {
             const R = 6371;
@@ -187,37 +247,101 @@ let USER_ID = null; // will be set after device registration
                       Math.sin(dLon/2) ** 2;
             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         }
+        function bearingTo(lat1, lon1, lat2, lon2) {
+            const toRad = d => d * Math.PI / 180;
+            const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
+            const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+                      Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
+            return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+        }
+        function radarScale(km) { return 140 * Math.sqrt(Math.min(km, 5) / 5); }
 
-        function updateLiveCard(distanceKm, destination) {
-            const card = document.getElementById("liveCard");
-            const idle = document.getElementById("idleState");
+        function tweenNumber(el, to, duration = 500) {
+            const from = parseFloat(el.dataset.val || to);
+            const start = performance.now();
+            el.dataset.val = to;
+            function step(now) {
+                const t = Math.min((now - start) / duration, 1);
+                const eased = 1 - Math.pow(1 - t, 3);
+                el.textContent = (from + (to - from) * eased).toFixed(1);
+                if (t < 1) requestAnimationFrame(step);
+            }
+            requestAnimationFrame(step);
+        }
+
+        function renderTrail() {
+            const g = document.getElementById("trailGroup");
+            g.innerHTML = "";
+            trail.forEach((p, i) => {
+                const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                c.setAttribute("cx", p.x);
+                c.setAttribute("cy", p.y);
+                c.setAttribute("r", 4 - i * 0.6);
+                c.setAttribute("opacity", 0.4 - i * 0.1);
+                c.setAttribute("class", "trail-dot");
+                g.appendChild(c);
+            });
+        }
+
+        function updateLive(distanceKm, destination, bearing) {
+            if (distanceKm > 5) { showIdleState(); return; }
+
             let level, label, desc;
-
-            if (distanceKm > 5) {
-                showIdleState();
-                return;
-            } else if (distanceKm <= 0.5) {
-                level = "critical"; label = "🔴 Give Way Now"; desc = "Ambulance very close";
+            if (distanceKm <= 0.5) {
+                level = "critical"; label = "Give way now"; desc = "The ambulance is very close.";
             } else if (distanceKm <= 2) {
-                level = "high"; label = "🚨 Prepare to Give Way"; desc = "Ambulance nearby";
+                level = "high"; label = "Prepare to give way"; desc = "The ambulance is getting near.";
             } else {
-                level = "info"; label = "⚠️ Ambulance Approaching"; desc = "Stay alert";
+                level = "info"; label = "Ambulance approaching"; desc = "Stay alert — no need to move yet.";
             }
 
-            card.className = level;
-            document.getElementById("levelLabel").innerText = label;
-            document.getElementById("distanceStat").innerText = distanceKm.toFixed(1) + " km";
-            document.getElementById("levelDescription").innerText = desc;
-            document.getElementById("destinationNote").innerText = destination ? `Heading to ${destination}` : "";
+            const wasCritical = currentLevel === "critical";
+            setLevel(level, label, desc);
+            document.getElementById("distanceRow").style.display = "flex";
+            document.getElementById("tapHint").style.display = "none";
+            tweenNumber(document.getElementById("distanceStat"), distanceKm);
 
-            card.style.display = "block";
-            idle.style.display = "none";
+            const r = radarScale(distanceKm);
+            const rad = bearing * Math.PI / 180;
+            const mx = 150 + r * Math.sin(rad);
+            const my = 150 - r * Math.cos(rad);
+
+            const amb = document.getElementById("radarAmb");
+            if (amb.getAttribute("r") === "0") { amb.setAttribute("r", 7); }
+            trail.unshift({ x: parseFloat(amb.getAttribute("cx")), y: parseFloat(amb.getAttribute("cy")) });
+            trail = trail.slice(0, 4);
+            renderTrail();
+
+            amb.setAttribute("cx", mx);
+            amb.setAttribute("cy", my);
+
+            if (level === "critical" && !wasCritical && "vibrate" in navigator) {
+                try { navigator.vibrate([200, 100, 200]); } catch (e) {}
+            }
+
+            document.getElementById("destinationNote").innerText =
+                destination ? `Heading toward ${destination}` : "";
         }
 
         function showIdleState() {
-            document.getElementById("liveCard").style.display = "none";
-            document.getElementById("idleState").style.display = "block";
+            setLevel("idle", "All clear", "No ambulances nearby. We're still watching your area.");
+            document.getElementById("distanceRow").style.display = "none";
+            document.getElementById("destinationNote").innerText = "";
+            document.getElementById("tapHint").style.display = "block";
+            document.getElementById("radarAmb").setAttribute("r", 0);
+            trail = [];
+            renderTrail();
         }
+
+        function spawnTapRipple() {
+            const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            c.setAttribute("cx", 150);
+            c.setAttribute("cy", 150);
+            c.setAttribute("class", "tap-ripple");
+            document.getElementById("radarSvg").appendChild(c);
+            c.addEventListener("animationend", () => c.remove());
+        }
+        document.getElementById("youDot").addEventListener("click", spawnTapRipple);
     </script>
 </body>
 </html>
