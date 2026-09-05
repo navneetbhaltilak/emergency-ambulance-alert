@@ -17,6 +17,17 @@ import math
 app = Flask(__name__)
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(e):
+    # Without this, any unhandled exception returns Flask's default HTML
+    # error page — every frontend here does resp.json() on the response,
+    # so an HTML page shows up as "Unexpected token '<' is not valid JSON"
+    # instead of a usable error. This guarantees JSON comes back either way.
+    import traceback
+    traceback.print_exc()
+    code = getattr(e, "code", 500)
+    return jsonify({"error": str(e)}), code if isinstance(code, int) else 500
 firebase_creds_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
 if firebase_creds_json:
     cred = credentials.Certificate(json.loads(firebase_creds_json))
@@ -247,6 +258,11 @@ def start_emergency():
     """, (ambulance_id,))
     amb_loc = cur.fetchone()
 
+    if amb_loc is None:
+        cur.close()
+        conn.close()
+        return jsonify({"error": f"Ambulance '{ambulance_id}' is not registered. Register it first."}), 404
+
     route_geojson = None
     if dest_lat and dest_lng and amb_loc:
         try:
@@ -408,7 +424,7 @@ def ambulance_location_ping():
 def get_ambulance_status(ambulance_id):
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT status FROM ambulances WHERE ambulance_id = %s", (ambulance_id,))
+    cur.execute("SELECT status, destination FROM ambulances WHERE ambulance_id = %s", (ambulance_id,))
     row = cur.fetchone()
 
     if row is None:
@@ -419,8 +435,9 @@ def get_ambulance_status(ambulance_id):
     result = {"status": row["status"]}
 
     if row["status"] == "emergency":
+        result["destination"] = row["destination"]
         cur.execute("""
-            SELECT destination, destination_lat, destination_lng, route_geojson
+            SELECT destination_lat, destination_lng, route_geojson
             FROM emergency_events
             WHERE ambulance_id = %s AND status = 'active'
             ORDER BY start_time DESC LIMIT 1
@@ -433,7 +450,6 @@ def get_ambulance_status(ambulance_id):
                     route_geojson = json.loads(route_geojson)
                 except Exception:
                     pass
-            result["destination"] = event["destination"]
             result["destination_lat"] = event["destination_lat"]
             result["destination_lng"] = event["destination_lng"]
             result["route_geojson"] = route_geojson
@@ -447,7 +463,7 @@ def get_active_emergency(ambulance_id):
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT status, ST_Y(location::geometry) AS latitude, ST_X(location::geometry) AS longitude
+        SELECT status, destination, ST_Y(location::geometry) AS latitude, ST_X(location::geometry) AS longitude
         FROM ambulances WHERE ambulance_id = %s
     """, (ambulance_id,))
     amb = cur.fetchone()
@@ -463,7 +479,7 @@ def get_active_emergency(ambulance_id):
         return jsonify({"status": amb["status"]}), 200
 
     cur.execute("""
-        SELECT event_id, destination, destination_lat, destination_lng, route_geojson
+        SELECT event_id, destination_lat, destination_lng, route_geojson
         FROM emergency_events
         WHERE ambulance_id = %s AND status = 'active'
         ORDER BY start_time DESC LIMIT 1
@@ -473,12 +489,12 @@ def get_active_emergency(ambulance_id):
     conn.close()
 
     if event is None:
-        return jsonify({"status": "emergency", "event": None, "latitude": amb["latitude"], "longitude": amb["longitude"]}), 200
+        return jsonify({"status": "emergency", "event": None, "destination": amb["destination"], "latitude": amb["latitude"], "longitude": amb["longitude"]}), 200
 
     return jsonify({
         "status": "emergency",
         "event_id": event["event_id"],
-        "destination": event["destination"],
+        "destination": amb["destination"],
         "destination_lat": event["destination_lat"],
         "destination_lng": event["destination_lng"],
         "route_geojson": event["route_geojson"],
