@@ -1,3 +1,6 @@
+
+
+User · HTML
 <!doctype html>
 <html>
   <head>
@@ -77,11 +80,13 @@
       .topbar {
         width: 100%;
         max-width: 340px;
-        display: flex;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
         align-items: center;
-        justify-content: space-between;
       }
       .brand {
+        grid-column: 2;
+        justify-self: center;
         display: flex;
         align-items: baseline;
         gap: 8px;
@@ -95,6 +100,8 @@
         margin: 0;
       }
       .mute-btn {
+        grid-column: 3;
+        justify-self: end;
         background: none;
         border: none;
         font-size: 17px;
@@ -649,3 +656,4 @@
     </script>
   </body>
 </html>
+ 
