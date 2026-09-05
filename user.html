@@ -363,56 +363,6 @@
         updateMuteBtn();
       });
 
-      let audioCtx = null;
-      function ensureAudio() {
-        if (!audioCtx) {
-          try {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-          } catch (e) {
-            /* audio not supported, fine — alerts still show visually */
-          }
-        } else if (audioCtx.state === "suspended") {
-          audioCtx.resume();
-        }
-      }
-      document.addEventListener("click", ensureAudio);
-      document.addEventListener("touchstart", ensureAudio, { passive: true });
-
-      function playTone(freq, duration, delay = 0) {
-        if (muted || !audioCtx || audioCtx.state !== "running") return;
-        setTimeout(() => {
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          osc.type = "sine";
-          osc.frequency.value = freq;
-          gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(
-            0.22,
-            audioCtx.currentTime + 0.02,
-          );
-          gain.gain.exponentialRampToValueAtTime(
-            0.0001,
-            audioCtx.currentTime + duration / 1000,
-          );
-          osc.connect(gain).connect(audioCtx.destination);
-          osc.start();
-          osc.stop(audioCtx.currentTime + duration / 1000 + 0.03);
-        }, delay);
-      }
-
-      function playAlertSound(level) {
-        if (level === "info") {
-          playTone(660, 180);
-        } else if (level === "high") {
-          playTone(740, 140, 0);
-          playTone(740, 140, 220);
-        } else if (level === "critical") {
-          playTone(880, 120, 0);
-          playTone(880, 120, 180);
-          playTone(880, 120, 360);
-        }
-      }
-
       const firebaseConfig = {
         apiKey: "AIzaSyCCDoW8qZ70Wc6qw6WWgmH10Wl1KvZZWTA",
         authDomain: "emergency-ambulance-alert.firebaseapp.com",
@@ -425,6 +375,7 @@
       const messaging = getMessaging(app);
 
       const alertSounds = {
+        info: new Audio("info.mp3"),
         high: new Audio("high.mp3"),
         critical: new Audio("critical.mp3"),
       };
@@ -432,7 +383,7 @@
       onMessage(messaging, (payload) => {
         console.log("Message received in foreground:", payload);
         const level = payload.data?.level;
-        if (level && alertSounds[level]) {
+        if (!muted && level && alertSounds[level]) {
           alertSounds[level]
             .play()
             .catch((err) => console.log("Sound play blocked:", err));
@@ -632,11 +583,7 @@
         }
 
         const wasCritical = currentLevel === "critical";
-        const previousLevel = currentLevel;
         setLevel(level, label, desc);
-        if (level !== previousLevel) {
-          playAlertSound(level);
-        }
         document.getElementById("distanceRow").style.display = "flex";
         document.getElementById("tapHint").style.display = "none";
         tweenNumber(document.getElementById("distanceStat"), distanceKm);

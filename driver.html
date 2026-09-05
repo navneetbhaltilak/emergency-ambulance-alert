@@ -147,7 +147,6 @@ Driver · HTML
       type="text"
       id="ambulanceId"
       placeholder="Ambulance ID (e.g. AMB001)"
-      value="AMB001"
     />
     <div style="position: relative; width: 100%; max-width: 320px">
       <input
@@ -199,6 +198,7 @@ Driver · HTML
       ></div>
     </div>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
       const API_BASE = "https://emergency-ambulance-alert.onrender.com";
       let watchId = null;
@@ -353,35 +353,63 @@ Driver · HTML
         }
       });
 
-      async function checkExistingEmergency() {
+      const AMB_ID_KEY = "ambulance_driver_id";
+      const storedAmbId = localStorage.getItem(AMB_ID_KEY);
+      if (storedAmbId) {
+        document.getElementById("ambulanceId").value = storedAmbId;
+      }
+      document.getElementById("ambulanceId").addEventListener("change", (e) => {
+        localStorage.setItem(AMB_ID_KEY, e.target.value.trim());
+      });
+
+      async function checkExistingEmergency(attempt = 1) {
         const ambulanceId = document.getElementById("ambulanceId").value.trim();
         if (!ambulanceId) return;
 
+        let data;
         try {
           const resp = await fetch(
             `${API_BASE}/api/ambulance/status/${ambulanceId}`,
           );
-          const data = await resp.json();
-
-          if (data.status === "emergency") {
-            document.getElementById("startBtn").style.display = "none";
-            document.getElementById("endBtn").style.display = "block";
-            document.getElementById("statusCard").style.display = "block";
-
-            if (data.destination) {
-              document.getElementById("destination").value = data.destination;
-              document.getElementById("destination").disabled = true;
-            }
-            destLat = data.destination_lat ?? null;
-            destLng = data.destination_lng ?? null;
-            if (data.route_geojson) {
-              showRoute(data.route_geojson, data.destination);
-            }
-
-            startTracking(ambulanceId);
-          }
+          if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+          data = await resp.json();
         } catch (err) {
           console.error("Failed to check existing status:", err);
+          // A single flaky request (cold start, weak signal) shouldn't make
+          // an active emergency look like it disappeared — retry a couple
+          // of times before giving up.
+          if (attempt < 3) {
+            setTimeout(() => checkExistingEmergency(attempt + 1), 2000);
+          } else {
+            document.getElementById("gpsStatus").innerText =
+              "Couldn't reach the server to check for an active emergency — reload to retry.";
+          }
+          return;
+        }
+
+        if (data.status === "emergency") {
+          document.getElementById("startBtn").style.display = "none";
+          document.getElementById("endBtn").style.display = "block";
+          document.getElementById("statusCard").style.display = "block";
+
+          if (data.destination) {
+            document.getElementById("destination").value = data.destination;
+            document.getElementById("destination").disabled = true;
+          }
+          destLat = data.destination_lat ?? null;
+          destLng = data.destination_lng ?? null;
+
+          if (data.route_geojson) {
+            try {
+              showRoute(data.route_geojson, data.destination);
+            } catch (err) {
+              // Don't let a map-drawing problem stop location tracking
+              // from resuming — the broadcast is what actually matters.
+              console.error("Failed to redraw route on refresh:", err);
+            }
+          }
+
+          startTracking(ambulanceId);
         }
       }
 
@@ -393,6 +421,7 @@ Driver · HTML
           alert("Enter an ambulance ID");
           return;
         }
+        localStorage.setItem(AMB_ID_KEY, ambulanceId);
         if (!destination) {
           alert(
             "Enter a destination — it's needed to calculate the route, live distance, and estimated arrival time.",
@@ -645,6 +674,5 @@ Driver · HTML
         .getElementById("ambulanceId")
         .addEventListener("change", checkExistingEmergency);
     </script>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   </body>
 </html>

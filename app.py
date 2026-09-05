@@ -71,12 +71,16 @@ def send_fcm_notification(token, ambulance_id, distance_km, level):
     else:
         body = f"Ambulance {ambulance_id} is {distance_km:.1f} km away."
 
+    # Data-only message: no top-level "notification" field. If we include
+    # one, Firebase auto-displays a system popup with the OS default sound
+    # regardless of whether the app is open — which was firing alongside
+    # our own in-app alert and showing up as duplicated notifications.
+    # With data-only, the app (foreground JS or the service worker in the
+    # background) decides if/how to display it.
     message = messaging.Message(
-        notification=messaging.Notification(
-            title=titles.get(level, "Ambulance Alert"),
-            body=body
-        ),
         data={
+            "title": titles.get(level, "Ambulance Alert"),
+            "body": body,
             "ambulance_id": ambulance_id,
             "distance": str(distance_km) if distance_km else "",
             "level": level
