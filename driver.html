@@ -17,7 +17,7 @@
         color: white;
         min-height: 100vh;
       }
- 
+
       /* ---------- loading (checking for an existing emergency) ---------- */
       #loadingScreen {
         min-height: 100vh;
@@ -38,7 +38,7 @@
       }
       @keyframes spin { to { transform: rotate(360deg); } }
       #loadingText { color: #aaa; font-size: 13px; max-width: 260px; }
- 
+
       /* ---------- setup screen ---------- */
       #setupScreen {
         display: none;
@@ -90,7 +90,7 @@
         text-align: center;
         margin-bottom: 16px;
       }
- 
+
       /* ---------- active screen (ride-hailing style: map on top, trip sheet below) ---------- */
       #activeScreen { display: none; min-height: 100vh; flex-direction: column; }
       #routeMap {
@@ -120,7 +120,7 @@
       @keyframes pulse {
         0%, 100% { opacity: 1; } 50% { opacity: 0.3; }
       }
- 
+
       .trip-sheet {
         flex: 1;
         background: #16213e;
@@ -149,7 +149,7 @@
         word-break: break-word;
       }
       .trip-dest .pin { margin-right: 4px; }
- 
+
       .stats-row {
         display: flex;
         justify-content: space-between;
@@ -162,7 +162,7 @@
       .stat { font-size: 22px; font-weight: 700; }
       .stat.speed { font-size: 24px; }
       .label { font-size: 10.5px; color: #888; text-transform: uppercase; margin-top: 2px; }
- 
+
       .secondary-row {
         font-size: 12px;
         color: #999;
@@ -181,7 +181,7 @@
         color: white;
         margin-top: auto;
       }
- 
+
       .amb-div-icon, .dest-div-icon {
         font-size: 22px;
         background: none;
@@ -195,12 +195,12 @@
       <div class="spinner"></div>
       <div id="loadingText">Checking for an active emergency…</div>
     </div>
- 
+
     <div id="setupScreen">
       <h1>🚑 Ambulance Driver</h1>
       <div class="subtitle">Real-time emergency location broadcast</div>
       <div class="setup-note" id="setupNote" style="display:none;"></div>
- 
+
       <input
         type="text"
         id="ambulanceId"
@@ -215,10 +215,10 @@
         />
         <div id="suggestionsBox"></div>
       </div>
- 
+
       <button id="startBtn">🔴 Start Emergency</button>
     </div>
- 
+
     <div id="activeScreen">
       <div style="position: relative;">
         <div class="live-badge"><span class="live-dot"></span>LIVE</div>
@@ -229,7 +229,7 @@
           <div class="trip-amb">Ambulance<br /><b id="tripAmbId">—</b></div>
           <div class="trip-dest"><span class="pin">📍</span><span id="tripDestName">—</span></div>
         </div>
- 
+
         <div class="stats-row">
           <div class="stat-box">
             <div class="stat speed" id="speedStat">0 km/h</div>
@@ -244,22 +244,22 @@
             <div class="label">ETA</div>
           </div>
         </div>
- 
+
         <div class="secondary-row">
           <span id="alertStat">0</span> users alerted (last ping) ·
           <span id="pingCount">0 pings sent</span>
         </div>
         <div id="gpsStatus"></div>
- 
+
         <button id="endBtn">⬛ End Emergency</button>
       </div>
     </div>
- 
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
       const API_BASE = "https://emergency-ambulance-alert.onrender.com";
       const AMB_ID_KEY = "ambulance_driver_id";
- 
+
       let watchId = null;
       let lastSendTime = 0;
       const SEND_INTERVAL_MS = 5000;
@@ -274,7 +274,7 @@
       let destLat = null;
       let destLng = null;
       let recentSpeeds = [];
- 
+
       function showScreen(id) {
         ["loadingScreen", "setupScreen", "activeScreen"].forEach((s) => {
           document.getElementById(s).style.display = "none";
@@ -282,7 +282,7 @@
         document.getElementById(id).style.display =
           id === "setupScreen" ? "flex" : id === "activeScreen" ? "flex" : "flex";
       }
- 
+
       function haversineDistance(lat1, lon1, lat2, lon2) {
         const R = 6371;
         const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -294,7 +294,7 @@
             Math.sin(dLon / 2) ** 2;
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       }
- 
+
       const storedAmbId = localStorage.getItem(AMB_ID_KEY);
       if (storedAmbId) {
         document.getElementById("ambulanceId").value = storedAmbId;
@@ -302,7 +302,7 @@
       document.getElementById("ambulanceId").addEventListener("change", (e) => {
         localStorage.setItem(AMB_ID_KEY, e.target.value.trim());
       });
- 
+
       document.getElementById("destination").addEventListener("input", (e) => {
         const query = e.target.value.trim();
         selectedDestLat = null;
@@ -314,7 +314,7 @@
         }
         debounceTimer = setTimeout(() => fetchSuggestions(query), 400);
       });
- 
+
       async function fetchSuggestions(query) {
         try {
           const resp = await fetch(
@@ -327,7 +327,7 @@
           console.error("Suggestion fetch failed:", err);
         }
       }
- 
+
       function showSuggestions(results) {
         const box = document.getElementById("suggestionsBox");
         if (!results || results.length === 0) {
@@ -356,68 +356,74 @@
           item.addEventListener("mouseleave", () => (item.style.background = "white"));
         });
       }
- 
+
       document.addEventListener("click", (e) => {
         if (!e.target.closest("#destination") && !e.target.closest("#suggestionsBox")) {
           document.getElementById("suggestionsBox").style.display = "none";
         }
       });
- 
+
       function showRoute(routeGeojson, destinationLabel) {
         if (!routeGeojson) return;
- 
+
         if (!routeMap) {
           routeMap = L.map("routeMap");
           L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
             attribution: "&copy; OpenStreetMap contributors",
           }).addTo(routeMap);
         }
- 
+
         if (routeLine) routeMap.removeLayer(routeLine);
         const latlngs = routeGeojson.coordinates.map((c) => [c[1], c[0]]);
         routeLine = L.polyline(latlngs, { color: "#e63946", weight: 5 }).addTo(routeMap);
- 
+
         if (destMarker) routeMap.removeLayer(destMarker);
         const destPoint = latlngs[latlngs.length - 1];
         const destIcon = L.divIcon({ html: "📍", className: "dest-div-icon", iconSize: [24, 24] });
         destMarker = L.marker(destPoint, { icon: destIcon })
           .addTo(routeMap)
           .bindPopup(`Destination${destinationLabel ? ": " + destinationLabel : ""}`);
- 
+
         const ambIcon = L.divIcon({ html: "🚑", className: "amb-div-icon", iconSize: [24, 24] });
         const ambulanceId = document.getElementById("ambulanceId").value.trim();
         if (ambulanceMapMarker) routeMap.removeLayer(ambulanceMapMarker);
         ambulanceMapMarker = L.marker(latlngs[0], { icon: ambIcon })
           .addTo(routeMap)
           .bindPopup(`Ambulance: ${ambulanceId}`);
- 
+
         routeMap.fitBounds(routeLine.getBounds());
         setTimeout(() => routeMap.invalidateSize(), 200);
       }
- 
+
       function enterActiveScreen(ambulanceId, destination) {
         document.getElementById("tripAmbId").innerText = ambulanceId;
         document.getElementById("tripDestName").innerText = destination || "—";
         showScreen("activeScreen");
         setTimeout(() => routeMap && routeMap.invalidateSize(), 250);
       }
- 
+
       // Retry the initial status check with backoff — a Render free-tier
       // cold start can take 20-50s, so a couple of quick retries isn't
       // enough; without this, an active emergency looks like it vanished
       // on refresh even though the backend still has it running.
       const RETRY_DELAYS = [2000, 4000, 8000, 15000, 30000, 30000];
- 
+
       async function checkExistingEmergency(attempt = 0) {
         const ambulanceId = document.getElementById("ambulanceId").value.trim();
         if (!ambulanceId) {
           showScreen("setupScreen");
           return;
         }
- 
+
         let data;
         try {
           const resp = await fetch(`${API_BASE}/api/ambulance/status/${ambulanceId}`);
+          if (resp.status === 404) {
+            // Not a failure — this ambulance ID just isn't registered or
+            // has no emergency running. No retry, no alarming message.
+            showScreen("setupScreen");
+            return;
+          }
           if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
           data = await resp.json();
         } catch (err) {
@@ -436,7 +442,7 @@
           }
           return;
         }
- 
+
         if (data.status === "emergency") {
           destLat = data.destination_lat ?? null;
           destLng = data.destination_lng ?? null;
@@ -453,11 +459,11 @@
           showScreen("setupScreen");
         }
       }
- 
+
       document.getElementById("startBtn").onclick = async () => {
         const ambulanceId = document.getElementById("ambulanceId").value.trim();
         const destination = document.getElementById("destination").value.trim();
- 
+
         if (!ambulanceId) {
           alert("Enter an ambulance ID");
           return;
@@ -471,11 +477,11 @@
           alert("Geolocation not supported on this device");
           return;
         }
- 
+
         const btn = document.getElementById("startBtn");
         btn.disabled = true;
         btn.innerHTML = "⏳ Getting your location...";
- 
+
         navigator.geolocation.getCurrentPosition(
           async (pos) => {
             btn.innerHTML = "⏳ Starting emergency...";
@@ -485,20 +491,23 @@
                 body.destination_lat = selectedDestLat;
                 body.destination_lng = selectedDestLng;
               }
- 
+
               const resp = await fetch(`${API_BASE}/api/ambulance/emergency/start`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
               });
               const data = await resp.json();
+              if (!resp.ok) {
+                throw new Error(data.error || `Server returned ${resp.status}`);
+              }
               console.log("Emergency started:", data);
               destLat = data.destination_lat ?? null;
               destLng = data.destination_lng ?? null;
- 
+
               btn.innerHTML = "🔴 Start Emergency";
               btn.disabled = false;
- 
+
               enterActiveScreen(ambulanceId, data.destination || destination);
               if (data.route_geojson) {
                 showRoute(data.route_geojson, data.destination);
@@ -517,19 +526,19 @@
           },
         );
       };
- 
+
       document.getElementById("endBtn").onclick = async () => {
         const ambulanceId = document.getElementById("ambulanceId").value.trim();
         const endBtn = document.getElementById("endBtn");
- 
+
         endBtn.disabled = true;
         endBtn.innerHTML = "⏳ Ending emergency...";
- 
+
         if (watchId !== null) {
           navigator.geolocation.clearWatch(watchId);
           watchId = null;
         }
- 
+
         try {
           await fetch(`${API_BASE}/api/ambulance/emergency/end`, {
             method: "POST",
@@ -539,33 +548,33 @@
         } catch (err) {
           console.error(err);
         }
- 
+
         endBtn.disabled = false;
         endBtn.innerHTML = "⬛ End Emergency";
- 
+
         pingCounter = 0;
         recentSpeeds = [];
         destLat = null;
         destLng = null;
         lastSendTime = 0;
- 
+
         document.getElementById("destination").value = "";
         selectedDestLat = null;
         selectedDestLng = null;
- 
+
         if (routeMap) {
           if (routeLine) { routeMap.removeLayer(routeLine); routeLine = null; }
           if (destMarker) { routeMap.removeLayer(destMarker); destMarker = null; }
           if (ambulanceMapMarker) { routeMap.removeLayer(ambulanceMapMarker); ambulanceMapMarker = null; }
         }
- 
+
         showScreen("setupScreen");
       };
- 
+
       function startTracking(ambulanceId) {
         const statusEl = document.getElementById("gpsStatus");
         function setGpsStatus(text) { statusEl.innerText = text || ""; }
- 
+
         async function sendLocation(lat, lng, speedKmh, accuracy) {
           try {
             const resp = await fetch(`${API_BASE}/api/ambulance/location`, {
@@ -574,16 +583,21 @@
               body: JSON.stringify({ ambulance_id: ambulanceId, latitude: lat, longitude: lng, speed: speedKmh }),
             });
             if (!resp.ok) {
-              setGpsStatus(`Server error (${resp.status}) — will retry`);
+              let errMsg = `Server error (${resp.status})`;
+              try {
+                const errData = await resp.json();
+                if (errData.error) errMsg = errData.error;
+              } catch (e) { /* body wasn't JSON, fall back to status code */ }
+              setGpsStatus(`${errMsg} — will retry`);
               return;
             }
             const data = await resp.json();
- 
+
             pingCounter++;
             document.getElementById("speedStat").innerText = `${speedKmh} km/h`;
             document.getElementById("alertStat").innerText = data.notified ?? 0;
             document.getElementById("pingCount").innerText = `${pingCounter} pings sent`;
- 
+
             // Always show the driver their GPS quality plainly instead of
             // silently dropping weak readings — the broadcast keeps going
             // either way, same as Uber/Ola do it.
@@ -594,14 +608,14 @@
             } else {
               setGpsStatus("");
             }
- 
+
             if (ambulanceMapMarker) ambulanceMapMarker.setLatLng([lat, lng]);
- 
+
             if (destLat !== null && destLng !== null) {
               const remainingKm = haversineDistance(lat, lng, destLat, destLng);
               document.getElementById("remainingDistStat").innerText =
                 remainingKm < 1 ? `${Math.round(remainingKm * 1000)} m` : `${remainingKm.toFixed(1)} km`;
- 
+
               if (speedKmh > 3) {
                 recentSpeeds.push(speedKmh);
                 if (recentSpeeds.length > 5) recentSpeeds.shift();
@@ -620,7 +634,7 @@
             setGpsStatus("Can't reach server — check connection, will retry");
           }
         }
- 
+
         function handlePosition(pos) {
           const now = Date.now();
           const lat = pos.coords.latitude;
@@ -628,7 +642,7 @@
           const accuracy = pos.coords.accuracy;
           const speedMs = pos.coords.speed;
           const speedKmh = speedMs ? Math.round(speedMs * 3.6) : 0;
- 
+
           // watchPosition streams continuously as the OS refines its fix —
           // we always keep the latest reading and just throttle how often
           // we actually POST it, instead of blocking on accuracy. A rough
@@ -637,7 +651,7 @@
           lastSendTime = now;
           sendLocation(lat, lng, speedKmh, accuracy);
         }
- 
+
         function handleError(err) {
           console.error("Geolocation error:", err);
           const messages = {
@@ -647,7 +661,7 @@
           };
           setGpsStatus(messages[err.code] || "Location error — will keep trying");
         }
- 
+
         if (watchId !== null) navigator.geolocation.clearWatch(watchId);
         watchId = navigator.geolocation.watchPosition(handlePosition, handleError, {
           enableHighAccuracy: true,
@@ -655,10 +669,9 @@
           timeout: 15000,
         });
       }
- 
+
       checkExistingEmergency();
       document.getElementById("ambulanceId").addEventListener("change", () => checkExistingEmergency());
     </script>
   </body>
 </html>
- 
