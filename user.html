@@ -448,6 +448,32 @@
           osc.stop(audioCtx.currentTime + duration / 1000 + 0.03);
         }, delay);
       }
+      function playSiren(durationMs = 2200) {
+        if (muted || !audioCtx || audioCtx.state !== "running") return;
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "sawtooth"; // more piercing than sine, closer to a real siren
+        osc.connect(gain).connect(audioCtx.destination);
+
+        const sweepSeconds = 0.7; // one "nee-naw" cycle
+        const cycles = Math.ceil(durationMs / 1000 / sweepSeconds);
+        for (let i = 0; i < cycles; i++) {
+          const t0 = now + i * sweepSeconds;
+          osc.frequency.setValueAtTime(600, t0);
+          osc.frequency.linearRampToValueAtTime(1000, t0 + sweepSeconds / 2);
+          osc.frequency.linearRampToValueAtTime(600, t0 + sweepSeconds);
+        }
+
+        const endTime = now + durationMs / 1000;
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(0.16, now + 0.05);
+        gain.gain.setValueAtTime(0.16, endTime - 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
+
+        osc.start(now);
+        osc.stop(endTime + 0.05);
+      }
       function playAlertSound(level) {
         if (level === "info") {
           playTone(660, 180);
@@ -455,9 +481,7 @@
           playTone(740, 140, 0);
           playTone(740, 140, 220);
         } else if (level === "critical") {
-          playTone(880, 120, 0);
-          playTone(880, 120, 180);
-          playTone(880, 120, 360);
+          playSiren();
         } else if (level === "clear") {
           playTone(520, 200);
         }
