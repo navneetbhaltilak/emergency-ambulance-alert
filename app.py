@@ -13,21 +13,38 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 import os
 import math
+import hmac
+import gevent
+from collections import defaultdict
+from functools import wraps
 
 app = Flask(__name__)
-CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+DEFAULT_CORS_ORIGINS = ",".join([
+    "https://navneetbhaltilak.github.io",
+    "http://localhost:5000",
+    "http://localhost:5500",
+    "http://127.0.0.1:5500",
+])
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ORIGINS", DEFAULT_CORS_ORIGINS).split(",")
+    if origin.strip()
+]
+CORS(app, resources={r"/api/*": {"origins": CORS_ORIGINS}})
+socketio = SocketIO(app, cors_allowed_origins=CORS_ORIGINS)
+
+DRIVER_API_KEY = os.environ.get("DRIVER_API_KEY")
+STALE_EMERGENCY_SECONDS = max(30, int(os.environ.get("STALE_EMERGENCY_SECONDS", "120")))
+if not DRIVER_API_KEY:
+    print("WARNING: DRIVER_API_KEY is not configured; driver write endpoints remain in compatibility mode.")
 
 @app.errorhandler(Exception)
 def handle_unexpected_error(e):
-    # Without this, any unhandled exception returns Flask's default HTML
-    # error page — every frontend here does resp.json() on the response,
-    # so an HTML page shows up as "Unexpected token '<' is not valid JSON"
-    # instead of a usable error. This guarantees JSON comes back either way.
     import traceback
     traceback.print_exc()
     code = getattr(e, "code", 500)
     return jsonify({"error": str(e)}), code if isinstance(code, int) else 500
+
 firebase_creds_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
 if firebase_creds_json:
     cred = credentials.Certificate(json.loads(firebase_creds_json))
@@ -52,6 +69,49 @@ def get_db():
                 time.sleep(1)
             else:
                 raise
+
+def require_driver_key(handler):
+    @wraps(handler)
+    def wrapped(*args, **kwargs):
+        if not DRIVER_API_KEY:
+            return handler(*args, **kwargs)
+        provided_key = request.headers.get("X-Driver-Key", "")
+        if not hmac.compare_digest(provided_key, DRIVER_API_KEY):
+            return jsonify({"error": "Valid driver credentials are required."}), 401
+        return handler(*args, **kwargs)
+    return wrapped
+
+def request_json_object():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return None
+    return data
+
+def valid_coordinate(value, minimum, maximum):
+    try:
+        coordinate = float(value)
+    except (TypeError, ValueError):
+        return None
+    return coordinate if minimum <= coordinate <= maximum else None
+
+def require_fields(data, fields):
+    missing = [f for f in fields if data.get(f) in (None, "")]
+    if missing:
+        return jsonify({"error": f"Missing required field(s): {', '.join(missing)}"}), 400
+    return None
+
+# Lightweight in-memory rate limiter — no extra dependency needed. Fine on
+# a single worker process (which is what this app runs as); would need a
+# shared store (e.g. Redis) if this ever moves to multiple workers/instances.
+_rate_limit_last_seen = defaultdict(float)
+
+def rate_limited(key, min_interval_seconds):
+    now = time.time()
+    if now - _rate_limit_last_seen[key] < min_interval_seconds:
+        return True
+    _rate_limit_last_seen[key] = now
+    return False
+
 def get_alert_level(distance_km):
     if distance_km <= 0.5:
         return "critical"
@@ -82,12 +142,6 @@ def send_fcm_notification(token, ambulance_id, distance_km, level):
     else:
         body = f"Ambulance {ambulance_id} is {distance_km:.1f} km away."
 
-    # Data-only message: no top-level "notification" field. If we include
-    # one, Firebase auto-displays a system popup with the OS default sound
-    # regardless of whether the app is open — which was firing alongside
-    # our own in-app alert and showing up as duplicated notifications.
-    # With data-only, the app (foreground JS or the service worker in the
-    # background) decides if/how to display it.
     message = messaging.Message(
         data={
             "title": titles.get(level, "Ambulance Alert"),
@@ -100,6 +154,7 @@ def send_fcm_notification(token, ambulance_id, distance_km, level):
     )
     messaging.send(message)
     return "sent"
+
 def is_near_route(cur, event_id, lat, lon, threshold_meters=200):
     cur.execute("""
         SELECT EXISTS (
@@ -113,15 +168,18 @@ def is_near_route(cur, event_id, lat, lon, threshold_meters=200):
         ) AS near_route
     """, (event_id, lon, lat, threshold_meters))
     return cur.fetchone()["near_route"]
+
 def calculate_bearing(lat1, lon1, lat2, lon2):
     lat1, lat2 = math.radians(lat1), math.radians(lat2)
     diff_lon = math.radians(lon2 - lon1)
     x = math.sin(diff_lon) * math.cos(lat2)
     y = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(diff_lon)
     return (math.degrees(math.atan2(x, y)) + 360) % 360
+
 def bearing_difference(b1, b2):
     diff = abs(b1 - b2) % 360
     return min(diff, 360 - diff)
+
 def get_users_needing_standdown(cur, event_id, current_nearby_user_ids):
     cur.execute("""
         SELECT DISTINCT n.user_id, u.fcm_token
@@ -136,6 +194,18 @@ def get_users_needing_standdown(cur, event_id, current_nearby_user_ids):
         if row["user_id"] not in current_nearby_user_ids:
             standdown_list.append(row)
     return standdown_list
+
+def get_all_alerted_users(cur, event_ids):
+    if not event_ids:
+        return []
+    cur.execute("""
+        SELECT DISTINCT n.user_id, u.fcm_token
+        FROM notifications n
+        JOIN users u ON u.user_id = n.user_id
+        WHERE n.event_id = ANY(%s) AND n.alert_level != 'clear'
+    """, (event_ids,))
+    return cur.fetchall()
+
 def is_near_road(cur, lat, lon, threshold_meters=30):
     cur.execute("""
         SELECT EXISTS (
@@ -166,13 +236,85 @@ def geocode_address(address):
 def is_ahead(ambulance_bearing, bearing_to_user, cone_degrees=90):
     return bearing_difference(ambulance_bearing, bearing_to_user) <= cone_degrees
 
+def end_emergency_and_notify(ambulance_id):
+    """Shared by the manual /emergency/end endpoint and the stale-emergency
+    watcher. Marks the emergency ended and sends an all-clear push to every
+    user who was ever alerted for it — previously nobody was told an
+    emergency had ended at all."""
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT event_id FROM emergency_events
+        WHERE ambulance_id = %s AND status = 'active'
+    """, (ambulance_id,))
+    event_ids = [row["event_id"] for row in cur.fetchall()]
+
+    cur.execute("UPDATE ambulances SET status = 'idle' WHERE ambulance_id = %s", (ambulance_id,))
+    cur.execute("""
+        UPDATE emergency_events SET status = 'ended', end_time = NOW()
+        WHERE ambulance_id = %s AND status = 'active'
+    """, (ambulance_id,))
+
+    alerted_users = get_all_alerted_users(cur, event_ids)
+    for user in alerted_users:
+        try:
+            status_str = send_fcm_notification(user["fcm_token"], ambulance_id, None, "clear")
+        except Exception as e:
+            print(f"All-clear FCM send failed: {e}")
+            status_str = "failed"
+        if event_ids:
+            cur.execute("""
+                INSERT INTO notifications (event_id, user_id, distance_km, alert_level, status)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (event_ids[0], user["user_id"], None, "clear", status_str))
+
+    socketio.emit("ambulance_ended", {"ambulance_id": ambulance_id})
+    conn.commit()
+    cur.close()
+    conn.close()
+    return len(alerted_users)
+
+def stale_emergency_watcher():
+    """Runs for the lifetime of the process. An ambulance stuck in
+    'emergency' with no location update in a while (dropped connection,
+    crashed app, driver forgot to tap End) used to stay live forever,
+    misleading everyone still watching it on the dashboard or getting
+    alerts. This ends it automatically and sends the same all-clear."""
+    while True:
+        gevent.sleep(30)
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT ambulance_id FROM ambulances
+                WHERE status = 'emergency'
+                  AND last_updated < NOW() - make_interval(secs => %s)
+            """, (STALE_EMERGENCY_SECONDS,))
+            stale = [row["ambulance_id"] for row in cur.fetchall()]
+            cur.close()
+            conn.close()
+            for ambulance_id in stale:
+                print(f"Auto-ending stale emergency for {ambulance_id} (no update in {STALE_EMERGENCY_SECONDS}s)")
+                end_emergency_and_notify(ambulance_id)
+        except Exception as e:
+            print(f"Stale emergency watcher error: {e}")
+
+gevent.spawn(stale_emergency_watcher)
+
 @app.route("/api/users/register", methods=["POST"])
 def register_user():
-    data = request.json
+    data = request_json_object()
+    if data is None:
+        return jsonify({"error": "Request body must be JSON"}), 400
+    err = require_fields(data, ["name", "phone", "latitude", "longitude", "fcm_token"])
+    if err: return err
+    lat = valid_coordinate(data["latitude"], -90, 90)
+    lng = valid_coordinate(data["longitude"], -180, 180)
+    if lat is None or lng is None:
+        return jsonify({"error": "latitude/longitude out of range or not numeric"}), 400
     name = data["name"]
     phone = data["phone"]
-    lat = data["latitude"]
-    lng = data["longitude"]
     fcm_token = data["fcm_token"]
 
     conn = get_db()
@@ -188,12 +330,19 @@ def register_user():
     conn.close()
 
     return jsonify({"user_id": user_id}), 201
+
 @app.route("/api/users/location", methods=["PUT"])
 def update_user_location():
-    data = request.json
+    data = request_json_object()
+    if data is None:
+        return jsonify({"error": "Request body must be JSON"}), 400
+    err = require_fields(data, ["user_id", "latitude", "longitude"])
+    if err: return err
+    lat = valid_coordinate(data["latitude"], -90, 90)
+    lng = valid_coordinate(data["longitude"], -180, 180)
+    if lat is None or lng is None:
+        return jsonify({"error": "latitude/longitude out of range or not numeric"}), 400
     user_id = data["user_id"]
-    lat = data["latitude"]
-    lng = data["longitude"]
 
     conn = get_db()
     cur = conn.cursor()
@@ -208,13 +357,23 @@ def update_user_location():
     conn.close()
 
     return jsonify({"status": "updated"}), 200
+
 @app.route("/api/ambulance/register", methods=["POST"])
+@require_driver_key
 def register_ambulance():
-    data = request.json
+    if rate_limited(f"register:{request.remote_addr}", 5):
+        return jsonify({"error": "Too many requests, slow down."}), 429
+    data = request_json_object()
+    if data is None:
+        return jsonify({"error": "Request body must be JSON"}), 400
+    err = require_fields(data, ["ambulance_id", "vehicle_number", "latitude", "longitude"])
+    if err: return err
+    lat = valid_coordinate(data["latitude"], -90, 90)
+    lng = valid_coordinate(data["longitude"], -180, 180)
+    if lat is None or lng is None:
+        return jsonify({"error": "latitude/longitude out of range or not numeric"}), 400
     ambulance_id = data["ambulance_id"]
     vehicle_number = data["vehicle_number"]
-    lat = data["latitude"]
-    lng = data["longitude"]
 
     conn = get_db()
     cur = conn.cursor()
@@ -233,9 +392,17 @@ def register_ambulance():
         cur.close()
         conn.close()
         return jsonify({"error": f"Ambulance with ID '{ambulance_id}' is already registered."}), 409
+
 @app.route("/api/ambulance/emergency/start", methods=["POST"])
+@require_driver_key
 def start_emergency():
-    data = request.json
+    if rate_limited(f"start:{request.remote_addr}", 2):
+        return jsonify({"error": "Too many requests, slow down."}), 429
+    data = request_json_object()
+    if data is None:
+        return jsonify({"error": "Request body must be JSON"}), 400
+    err = require_fields(data, ["ambulance_id", "destination"])
+    if err: return err
     ambulance_id = data["ambulance_id"]
     destination = data.get("destination", None)
     dest_lat = data.get("destination_lat")
@@ -244,14 +411,9 @@ def start_emergency():
     if not destination or not destination.strip():
         return jsonify({"error": "destination is required"}), 400
 
-    # If a destination name was given but no coordinates, geocode it
-    if destination and not (dest_lat and dest_lng):
-        dest_lat, dest_lng = geocode_address(destination)
-
     conn = get_db()
     cur = conn.cursor()
 
-    # Get ambulance's current location to compute route FROM
     cur.execute("""
         SELECT ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng
         FROM ambulances WHERE ambulance_id = %s
@@ -263,6 +425,39 @@ def start_emergency():
         conn.close()
         return jsonify({"error": f"Ambulance '{ambulance_id}' is not registered. Register it first."}), 404
 
+    # Idempotent start: if this ambulance already has an active emergency
+    # (double-tapped Start, retried after a network blip), resume the
+    # existing one instead of creating a duplicate event.
+    cur.execute("""
+        SELECT event_id, destination_lat, destination_lng, route_geojson
+        FROM emergency_events WHERE ambulance_id = %s AND status = 'active'
+        ORDER BY start_time DESC LIMIT 1
+    """, (ambulance_id,))
+    existing_event = cur.fetchone()
+    if existing_event:
+        cur.execute("SELECT destination FROM ambulances WHERE ambulance_id = %s", (ambulance_id,))
+        existing_destination = cur.fetchone()["destination"]
+        cur.close()
+        conn.close()
+        existing_route = existing_event["route_geojson"]
+        if isinstance(existing_route, str):
+            try:
+                existing_route = json.loads(existing_route)
+            except Exception:
+                pass
+        return jsonify({
+            "event_id": existing_event["event_id"],
+            "destination": existing_destination,
+            "destination_lat": existing_event["destination_lat"],
+            "destination_lng": existing_event["destination_lng"],
+            "has_route": existing_route is not None,
+            "route_geojson": existing_route,
+            "resumed": True
+        }), 200
+
+    if destination and not (dest_lat and dest_lng):
+        dest_lat, dest_lng = geocode_address(destination)
+
     route_geojson = None
     if dest_lat and dest_lng and amb_loc:
         try:
@@ -270,7 +465,7 @@ def start_emergency():
             resp = http_requests.get(osrm_url, timeout=5)
             route_data = resp.json()
             if route_data.get("code") == "Ok":
-                route_geojson = route_data["routes"][0]["geometry"]  # a GeoJSON LineString
+                route_geojson = route_data["routes"][0]["geometry"]
         except Exception as e:
             print(f"Routing failed: {e}")
 
@@ -305,38 +500,56 @@ def start_emergency():
     }), 201
 
 @app.route("/api/ambulance/location", methods=["POST"])
+@require_driver_key
 def ambulance_location_ping():
-    data = request.json
+    data = request_json_object()
+    if data is None:
+        return jsonify({"error": "Request body must be JSON"}), 400
+    if rate_limited(f"loc:{data.get('ambulance_id', request.remote_addr)}", 2):
+        return jsonify({"error": "Too many requests, slow down."}), 429
+    err = require_fields(data, ["ambulance_id", "latitude", "longitude"])
+    if err: return err
+    lat = valid_coordinate(data["latitude"], -90, 90)
+    lng = valid_coordinate(data["longitude"], -180, 180)
+    if lat is None or lng is None:
+        return jsonify({"error": "latitude/longitude out of range or not numeric"}), 400
     ambulance_id = data["ambulance_id"]
-    lat = data["latitude"]
-    lng = data["longitude"]
     speed = data.get("speed", 0)
 
     conn = get_db()
     cur = conn.cursor()
 
-    # 1. Update ambulance location
     cur.execute("""
         UPDATE ambulances
         SET location = ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
             speed = %s, last_updated = NOW()
         WHERE ambulance_id = %s
-        RETURNING status
+        RETURNING status, destination
     """, (lng, lat, speed, ambulance_id))
-    status = cur.fetchone()["status"]
+    amb_row = cur.fetchone()
+    if amb_row is None:
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"error": f"Ambulance '{ambulance_id}' is not registered."}), 404
+    status = amb_row["status"]
+    destination = amb_row["destination"]
 
     if status != "emergency":
         conn.commit()
         cur.close(); conn.close()
         return jsonify({"status": "location updated, not in emergency"}), 200
 
-    # 2. Find the active event for this ambulance
     cur.execute("""
         SELECT event_id FROM emergency_events
         WHERE ambulance_id = %s AND status = 'active'
         ORDER BY start_time DESC LIMIT 1
     """, (ambulance_id,))
-    event_id = cur.fetchone()["event_id"]
+    event_row = cur.fetchone()
+    if event_row is None:
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"error": "Ambulance is marked emergency but has no active event", "notified": 0}), 409
+    event_id = event_row["event_id"]
     cur.execute("SELECT prev_latitude, prev_longitude FROM ambulances WHERE ambulance_id = %s", (ambulance_id,))
     prev = cur.fetchone()
 
@@ -344,7 +557,6 @@ def ambulance_location_ping():
     if prev["prev_latitude"] is not None:
         ambulance_bearing = calculate_bearing(prev["prev_latitude"], prev["prev_longitude"], lat, lng)
 
-    # 3. Find users within 5km who haven't already been notified for this event
     cur.execute("""
         SELECT u.user_id, u.fcm_token,
             ST_Distance(u.location, ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography) / 1000 AS distance_km,
@@ -356,18 +568,15 @@ def ambulance_location_ping():
     """, (lng, lat, lng, lat))
     nearby_users = cur.fetchall()
 
-    # 4. Send notifications and log them
     notified_count = 0
     cur.execute("SELECT route_geom IS NOT NULL AS has_route FROM emergency_events WHERE event_id = %s", (event_id,))
     has_route = cur.fetchone()["has_route"]
 
     for user in nearby_users:
         if has_route:
-            # Route-based filtering: is this user actually near the planned path?
             if not is_near_route(cur, event_id, user["latitude"], user["longitude"]):
                 continue
         else:
-            # Fallback: direction + road-based filtering (no destination set)
             if ambulance_bearing is not None:
                 bearing_to_user = calculate_bearing(lat, lng, user["latitude"], user["longitude"])
                 if not is_ahead(ambulance_bearing, bearing_to_user):
@@ -381,7 +590,7 @@ def ambulance_location_ping():
 
         last_level = get_last_alert_level(cur, event_id, user["user_id"])
         if new_level == last_level:
-            continue  # same zone as before — skip, avoid spam
+            continue
 
         try:
             status_str = send_fcm_notification(user["fcm_token"], ambulance_id, user["distance_km"], new_level)
@@ -392,7 +601,9 @@ def ambulance_location_ping():
             INSERT INTO notifications (event_id, user_id, distance_km, alert_level, status)
             VALUES (%s, %s, %s, %s, %s)
         """, (event_id, user["user_id"], user["distance_km"], new_level, status_str))
-        notified_count += 1
+        if status_str == "sent":
+            notified_count += 1
+
     current_nearby_ids = {u["user_id"] for u in nearby_users}
     standdown_users = get_users_needing_standdown(cur, event_id, current_nearby_ids)
 
@@ -406,6 +617,7 @@ def ambulance_location_ping():
             INSERT INTO notifications (event_id, user_id, distance_km, alert_level, status)
             VALUES (%s, %s, %s, %s, %s)
         """, (event_id, user["user_id"], None, "clear", status_str))
+
     cur.execute("""
         UPDATE ambulances SET prev_latitude = %s, prev_longitude = %s WHERE ambulance_id = %s
     """, (lat, lng, ambulance_id))
@@ -414,12 +626,14 @@ def ambulance_location_ping():
         "latitude": lat,
         "longitude": lng,
         "speed": speed,
-        "alerted_count": notified_count
+        "alerted_count": notified_count,
+        "destination": destination
     })
     conn.commit()
     cur.close()
     conn.close()
     return jsonify({"notified": notified_count}), 200
+
 @app.route("/api/ambulance/status/<ambulance_id>", methods=["GET"])
 def get_ambulance_status(ambulance_id):
     conn = get_db()
@@ -503,26 +717,25 @@ def get_active_emergency(ambulance_id):
     }), 200
 
 @app.route("/api/ambulance/emergency/end", methods=["POST"])
+@require_driver_key
 def end_emergency():
-    data = request.json
+    data = request_json_object()
+    if data is None:
+        return jsonify({"error": "Request body must be JSON"}), 400
+    err = require_fields(data, ["ambulance_id"])
+    if err: return err
     ambulance_id = data["ambulance_id"]
 
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("UPDATE ambulances SET status = 'idle' WHERE ambulance_id = %s", (ambulance_id,))
-    cur.execute("""
-        UPDATE emergency_events SET status = 'ended', end_time = NOW()
-        WHERE ambulance_id = %s AND status = 'active'
-    """, (ambulance_id,))
-    socketio.emit("ambulance_ended", {"ambulance_id": ambulance_id})
-    conn.commit()
-    cur.close()
-    conn.close()
+    notified = end_emergency_and_notify(ambulance_id)
+    return jsonify({"status": "emergency ended", "all_clear_sent_to": notified}), 200
 
-    return jsonify({"status": "emergency ended"}), 200
 @app.route("/api/users/update-token", methods=["POST"])
 def update_token():
-    data = request.json
+    data = request_json_object()
+    if data is None:
+        return jsonify({"error": "Request body must be JSON"}), 400
+    err = require_fields(data, ["user_id", "fcm_token"])
+    if err: return err
     user_id = data["user_id"]
     fcm_token = data["fcm_token"]
 
@@ -537,7 +750,11 @@ def update_token():
 
 @app.route("/api/users/register-device", methods=["POST"])
 def register_device():
-    data = request.json
+    data = request_json_object()
+    if data is None:
+        return jsonify({"error": "Request body must be JSON"}), 400
+    err = require_fields(data, ["device_id"])
+    if err: return err
     device_id = data["device_id"]
     lat = data.get("latitude")
     lng = data.get("longitude")
@@ -569,7 +786,7 @@ def dashboard_active():
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT ambulance_id, vehicle_number, speed,
+        SELECT ambulance_id, vehicle_number, speed, destination,
                ST_Y(location::geometry) AS latitude,
                ST_X(location::geometry) AS longitude
         FROM ambulances
