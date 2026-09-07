@@ -48,23 +48,28 @@
             console.log("Connected to live server");
         });
 
+        function updateStatusText() {
+            const count = Object.keys(ambulanceMarkers).length;
+            document.getElementById('status').innerText =
+                count > 0 ? `${count} ambulance(s) active` : "No active ambulances";
+        }
+
         socket.on('ambulance_update', (data) => {
             updateAmbulance(data);
-            document.getElementById('status').innerText = `1 ambulance(s) active`;
+            updateStatusText();
         });
 
         socket.on('ambulance_ended', (data) => {
             console.log("Received ambulance_ended event:", data);
             removeAmbulance(data.ambulance_id);
-            document.getElementById('status').innerText = "No active ambulances";
+            updateStatusText();
         });
         async function loadInitialAmbulances() {
             try {
                 const response = await fetch(`${API_BASE}/api/dashboard/active`);
                 const data = await response.json();
                 data.forEach(amb => updateAmbulance(amb));
-                document.getElementById('status').innerText =
-                    data.length > 0 ? `${data.length} ambulance(s) active` : "No active ambulances";
+                updateStatusText();
             } catch (err) {
                 console.error("Initial load failed:", err);
             }
@@ -106,7 +111,9 @@
             delete ambulanceMarkers[ambulanceId];
             delete ambulanceCircles[ambulanceId];
         }
-        document.getElementById('sidePanel').style.display = "none";
+        if (Object.keys(ambulanceMarkers).length === 0) {
+            document.getElementById('sidePanel').style.display = "none";
+        }
     }
 
     function updateSidePanel(amb) {
@@ -115,6 +122,7 @@
         panel.innerHTML = `
             <h4>${amb.ambulance_id}</h4>
             <p><b>Speed:</b> ${amb.speed || 0} km/h</p>
+            <p><b>Destination:</b> ${amb.destination || 'Not set'}</p>
             <p><b>Users alerted (this ping):</b> ${amb.alerted_count || 0}</p>
         `;
     }

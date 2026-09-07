@@ -263,6 +263,33 @@
         opacity: 0.45;
         margin-top: 22px;
       }
+
+      #enableCard {
+        width: 100%;
+        max-width: 320px;
+        text-align: center;
+        margin-top: 24px;
+      }
+      #enableCard p {
+        font-size: 13px;
+        opacity: 0.72;
+        line-height: 1.5;
+        margin-bottom: 18px;
+      }
+      #enableBtn {
+        width: 100%;
+        padding: 15px;
+        border: none;
+        border-radius: 10px;
+        background: var(--ink);
+        color: var(--paper);
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      #enableBtn:disabled {
+        opacity: 0.6;
+      }
     </style>
   </head>
   <body data-level="setup">
@@ -282,7 +309,7 @@
         </button>
       </div>
 
-      <div class="radar-stage">
+      <div class="radar-stage" id="radarStage" style="display:none;">
         <svg id="radarSvg" viewBox="0 0 300 300">
           <g id="sweepGroup">
             <path
@@ -309,7 +336,16 @@
         </svg>
       </div>
 
-      <div class="readout">
+      <div id="enableCard">
+        <p>
+          We'll ask for two permissions — notifications and location — so we
+          can tell you when an ambulance is close by. Nothing is requested
+          until you tap below.
+        </p>
+        <button id="enableBtn">Enable Alerts</button>
+      </div>
+
+      <div class="readout" id="readout" style="display:none;">
         <div class="level-tag" id="levelLabel">Setting up…</div>
         <div class="distance-row" id="distanceRow" style="display: none">
           <span class="distance-num" id="distanceStat" data-val="0">0.0</span>
@@ -321,7 +357,7 @@
         <div class="dest-note" id="destinationNote"></div>
       </div>
 
-      <div class="hint" id="tapHint">
+      <div class="hint" id="tapHint" style="display:none;">
         Tap the dot to check the connection's still live.
       </div>
     </div>
@@ -378,20 +414,59 @@
       const app = initializeApp(firebaseConfig);
       const messaging = getMessaging(app);
 
-      const alertSounds = {
-        info: new Audio("info.mp3"),
-        high: new Audio("high.mp3"),
-        critical: new Audio("critical.mp3"),
-      };
+      // Synthesized tones instead of external mp3 files — no asset to go
+      // missing, and every severity level is guaranteed to have a sound
+      // instead of relying on someone having uploaded info.mp3/high.mp3/
+      // critical.mp3 correctly.
+      let audioCtx = null;
+      function ensureAudio() {
+        if (!audioCtx) {
+          try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          } catch (e) {
+            /* not supported, alerts still show visually */
+          }
+        } else if (audioCtx.state === "suspended") {
+          audioCtx.resume();
+        }
+      }
+      document.addEventListener("click", ensureAudio);
+      document.addEventListener("touchstart", ensureAudio, { passive: true });
+
+      function playTone(freq, duration, delay = 0) {
+        if (muted || !audioCtx || audioCtx.state !== "running") return;
+        setTimeout(() => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = "sine";
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.22, audioCtx.currentTime + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration / 1000);
+          osc.connect(gain).connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + duration / 1000 + 0.03);
+        }, delay);
+      }
+      function playAlertSound(level) {
+        if (level === "info") {
+          playTone(660, 180);
+        } else if (level === "high") {
+          playTone(740, 140, 0);
+          playTone(740, 140, 220);
+        } else if (level === "critical") {
+          playTone(880, 120, 0);
+          playTone(880, 120, 180);
+          playTone(880, 120, 360);
+        } else if (level === "clear") {
+          playTone(520, 200);
+        }
+      }
 
       onMessage(messaging, (payload) => {
         console.log("Message received in foreground:", payload);
         const level = payload.data?.level;
-        if (!muted && level && alertSounds[level]) {
-          alertSounds[level]
-            .play()
-            .catch((err) => console.log("Sound play blocked:", err));
-        }
+        if (level) playAlertSound(level);
       });
 
       function setLevel(level, label, desc) {
@@ -402,6 +477,13 @@
       }
 
       async function initializeAlerts() {
+        const enableBtn = document.getElementById("enableBtn");
+        enableBtn.disabled = true;
+        enableBtn.innerText = "Setting up…";
+        document.getElementById("enableCard").style.display = "none";
+        document.getElementById("radarStage").style.display = "block";
+        document.getElementById("readout").style.display = "block";
+
         try {
           setLevel("setup", "Setting up…", "Registering this device.");
           const deviceId = getDeviceId();
@@ -488,7 +570,11 @@
           console.error(err);
         }
       }
-      initializeAlerts();
+
+      // Nothing runs until the user explicitly opts in — permissions,
+      // service worker registration, and location tracking all used to
+      // start automatically on page load, before the user had any control.
+      document.getElementById("enableBtn").addEventListener("click", initializeAlerts);
 
       const socket = io(API_BASE);
 

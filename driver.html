@@ -18,7 +18,6 @@
         min-height: 100vh;
       }
 
-      /* ---------- loading (checking for an existing emergency) ---------- */
       #loadingScreen {
         min-height: 100vh;
         display: flex;
@@ -39,7 +38,6 @@
       @keyframes spin { to { transform: rotate(360deg); } }
       #loadingText { color: #aaa; font-size: 13px; max-width: 260px; }
 
-      /* ---------- setup screen ---------- */
       #setupScreen {
         display: none;
         min-height: 100vh;
@@ -70,6 +68,7 @@
       }
       #startBtn { background: #e63946; color: white; }
       #startBtn:disabled { opacity: 0.6; }
+      .secondary-btn { background: #333; color: white; margin-top: 10px; }
       .field-wrap { position: relative; width: 100%; max-width: 320px; }
       #suggestionsBox {
         display: none;
@@ -90,8 +89,21 @@
         text-align: center;
         margin-bottom: 16px;
       }
+      .gps-fail-box {
+        display: none;
+        width: 100%;
+        max-width: 320px;
+        margin-bottom: 12px;
+      }
+      .gps-fail-box p {
+        color: #ffb4b4;
+        font-size: 13px;
+        text-align: center;
+        margin: 0 0 10px;
+      }
+      .gps-fail-actions { display: flex; gap: 10px; }
+      .gps-fail-actions button { margin-top: 0; }
 
-      /* ---------- active screen (ride-hailing style: map on top, trip sheet below) ---------- */
       #activeScreen { display: none; min-height: 100vh; flex-direction: column; }
       #routeMap {
         width: 100%;
@@ -216,6 +228,14 @@
         <div id="suggestionsBox"></div>
       </div>
 
+      <div class="gps-fail-box" id="gpsFailBox">
+        <p id="gpsFailText">Couldn't get your location.</p>
+        <div class="gps-fail-actions">
+          <button id="retryLocationBtn" class="secondary-btn">Retry</button>
+          <button id="cancelLocationBtn" class="secondary-btn">Cancel</button>
+        </div>
+      </div>
+
       <button id="startBtn">🔴 Start Emergency</button>
     </div>
 
@@ -259,6 +279,27 @@
     <script>
       const API_BASE = "https://emergency-ambulance-alert.onrender.com";
       const AMB_ID_KEY = "ambulance_driver_id";
+      const DRIVER_KEY_STORAGE = "ambulance_driver_key";
+
+      // The backend now checks this on start/location/end once
+      // DRIVER_API_KEY is set server-side. Prompted once, then reused from
+      // localStorage. Empty string is fine while the backend is still in
+      // compatibility mode (no key configured).
+      function getDriverKey() {
+        let key = localStorage.getItem(DRIVER_KEY_STORAGE);
+        if (key === null) {
+          key = prompt(
+            "Enter your driver key (ask your coordinator if you don't have one). Leave blank if none has been issued yet.",
+            "",
+          ) || "";
+          localStorage.setItem(DRIVER_KEY_STORAGE, key);
+        }
+        return key;
+      }
+      function authHeaders() {
+        const key = getDriverKey();
+        return key ? { "X-Driver-Key": key } : {};
+      }
 
       let watchId = null;
       let lastSendTime = 0;
@@ -279,8 +320,7 @@
         ["loadingScreen", "setupScreen", "activeScreen"].forEach((s) => {
           document.getElementById(s).style.display = "none";
         });
-        document.getElementById(id).style.display =
-          id === "setupScreen" ? "flex" : id === "activeScreen" ? "flex" : "flex";
+        document.getElementById(id).style.display = "flex";
       }
 
       function haversineDistance(lat1, lon1, lat2, lon2) {
@@ -402,10 +442,6 @@
         setTimeout(() => routeMap && routeMap.invalidateSize(), 250);
       }
 
-      // Retry the initial status check with backoff — a Render free-tier
-      // cold start can take 20-50s, so a couple of quick retries isn't
-      // enough; without this, an active emergency looks like it vanished
-      // on refresh even though the backend still has it running.
       const RETRY_DELAYS = [2000, 4000, 8000, 15000, 30000, 30000];
 
       async function checkExistingEmergency(attempt = 0) {
@@ -419,8 +455,6 @@
         try {
           const resp = await fetch(`${API_BASE}/api/ambulance/status/${ambulanceId}`);
           if (resp.status === 404) {
-            // Not a failure — this ambulance ID just isn't registered or
-            // has no emergency running. No retry, no alarming message.
             showScreen("setupScreen");
             return;
           }
@@ -460,7 +494,31 @@
         }
       }
 
-      document.getElementById("startBtn").onclick = async () => {
+      // Wraps navigator.geolocation.getCurrentPosition with an actual
+      // timeout and Retry/Cancel affordances. Before this, a stuck GPS fix
+      // meant the Start button could sit disabled forever with no way out.
+      function getLocationWithTimeout() {
+        return new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0,
+          });
+        });
+      }
+
+      function showGpsFail(message) {
+        document.getElementById("gpsFailBox").style.display = "block";
+        document.getElementById("gpsFailText").innerText = message;
+        const btn = document.getElementById("startBtn");
+        btn.disabled = false;
+        btn.innerHTML = "🔴 Start Emergency";
+      }
+      function hideGpsFail() {
+        document.getElementById("gpsFailBox").style.display = "none";
+      }
+
+      async function attemptStart() {
         const ambulanceId = document.getElementById("ambulanceId").value.trim();
         const destination = document.getElementById("destination").value.trim();
 
@@ -478,53 +536,67 @@
           return;
         }
 
+        hideGpsFail();
         const btn = document.getElementById("startBtn");
         btn.disabled = true;
         btn.innerHTML = "⏳ Getting your location...";
 
-        navigator.geolocation.getCurrentPosition(
-          async (pos) => {
-            btn.innerHTML = "⏳ Starting emergency...";
-            try {
-              const body = { ambulance_id: ambulanceId, destination: destination };
-              if (selectedDestLat && selectedDestLng) {
-                body.destination_lat = selectedDestLat;
-                body.destination_lng = selectedDestLng;
-              }
+        let pos;
+        try {
+          pos = await getLocationWithTimeout();
+        } catch (err) {
+          const messages = {
+            1: "Location permission denied. Allow location access, then Retry.",
+            2: "Location unavailable right now. Check GPS/network, then Retry.",
+            3: "Getting your location took too long. Try somewhere with a clearer sky view.",
+          };
+          showGpsFail(messages[err.code] || "Couldn't get your location.");
+          return;
+        }
 
-              const resp = await fetch(`${API_BASE}/api/ambulance/emergency/start`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
-              });
-              const data = await resp.json();
-              if (!resp.ok) {
-                throw new Error(data.error || `Server returned ${resp.status}`);
-              }
-              console.log("Emergency started:", data);
-              destLat = data.destination_lat ?? null;
-              destLng = data.destination_lng ?? null;
+        btn.innerHTML = "⏳ Starting emergency...";
+        try {
+          const body = { ambulance_id: ambulanceId, destination: destination };
+          if (selectedDestLat && selectedDestLng) {
+            body.destination_lat = selectedDestLat;
+            body.destination_lng = selectedDestLng;
+          }
 
-              btn.innerHTML = "🔴 Start Emergency";
-              btn.disabled = false;
+          const resp = await fetch(`${API_BASE}/api/ambulance/emergency/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify(body),
+          });
+          const data = await resp.json();
+          if (!resp.ok) {
+            throw new Error(data.error || `Server returned ${resp.status}`);
+          }
+          console.log("Emergency started:", data);
+          destLat = data.destination_lat ?? null;
+          destLng = data.destination_lng ?? null;
 
-              enterActiveScreen(ambulanceId, data.destination || destination);
-              if (data.route_geojson) {
-                showRoute(data.route_geojson, data.destination);
-              }
-              startTracking(ambulanceId);
-            } catch (err) {
-              btn.disabled = false;
-              btn.innerHTML = "🔴 Start Emergency";
-              alert("Failed to start emergency: " + err.message);
-            }
-          },
-          () => {
-            btn.disabled = false;
-            btn.innerHTML = "🔴 Start Emergency";
-            alert("Location permission is required to start an emergency.");
-          },
-        );
+          btn.innerHTML = "🔴 Start Emergency";
+          btn.disabled = false;
+
+          enterActiveScreen(ambulanceId, data.destination || destination);
+          if (data.route_geojson) {
+            showRoute(data.route_geojson, data.destination);
+          }
+          startTracking(ambulanceId);
+        } catch (err) {
+          btn.disabled = false;
+          btn.innerHTML = "🔴 Start Emergency";
+          alert("Failed to start emergency: " + err.message);
+        }
+      }
+
+      document.getElementById("startBtn").onclick = attemptStart;
+      document.getElementById("retryLocationBtn").onclick = attemptStart;
+      document.getElementById("cancelLocationBtn").onclick = () => {
+        hideGpsFail();
+        const btn = document.getElementById("startBtn");
+        btn.disabled = false;
+        btn.innerHTML = "🔴 Start Emergency";
       };
 
       document.getElementById("endBtn").onclick = async () => {
@@ -542,7 +614,7 @@
         try {
           await fetch(`${API_BASE}/api/ambulance/emergency/end`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...authHeaders() },
             body: JSON.stringify({ ambulance_id: ambulanceId }),
           });
         } catch (err) {
@@ -579,7 +651,7 @@
           try {
             const resp = await fetch(`${API_BASE}/api/ambulance/location`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", ...authHeaders() },
               body: JSON.stringify({ ambulance_id: ambulanceId, latitude: lat, longitude: lng, speed: speedKmh }),
             });
             if (!resp.ok) {
@@ -587,7 +659,7 @@
               try {
                 const errData = await resp.json();
                 if (errData.error) errMsg = errData.error;
-              } catch (e) { /* body wasn't JSON, fall back to status code */ }
+              } catch (e) {}
               setGpsStatus(`${errMsg} — will retry`);
               return;
             }
@@ -598,9 +670,6 @@
             document.getElementById("alertStat").innerText = data.notified ?? 0;
             document.getElementById("pingCount").innerText = `${pingCounter} pings sent`;
 
-            // Always show the driver their GPS quality plainly instead of
-            // silently dropping weak readings — the broadcast keeps going
-            // either way, same as Uber/Ola do it.
             if (accuracy > 1000) {
               setGpsStatus(`Sent — GPS is weak (±${Math.round(accuracy / 1000)}km), try open sky`);
             } else if (accuracy > 100) {
@@ -643,10 +712,6 @@
           const speedMs = pos.coords.speed;
           const speedKmh = speedMs ? Math.round(speedMs * 3.6) : 0;
 
-          // watchPosition streams continuously as the OS refines its fix —
-          // we always keep the latest reading and just throttle how often
-          // we actually POST it, instead of blocking on accuracy. A rough
-          // fix sent now beats a perfect one sent never.
           if (now - lastSendTime < SEND_INTERVAL_MS) return;
           lastSendTime = now;
           sendLocation(lat, lng, speedKmh, accuracy);
