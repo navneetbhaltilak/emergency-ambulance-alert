@@ -527,6 +527,7 @@
           });
 
           setLevel("setup", "Setting up…", "Asking for your location.");
+          localStorage.setItem(ENABLED_KEY, "1");
           if (!navigator.geolocation) {
             setLevel(
               "setup",
@@ -575,6 +576,19 @@
       // service worker registration, and location tracking all used to
       // start automatically on page load, before the user had any control.
       document.getElementById("enableBtn").addEventListener("click", initializeAlerts);
+
+      // But that opt-in should only be asked for once. If notification
+      // permission is already granted from a previous visit, skip straight
+      // to live mode instead of making the user tap Enable Alerts again
+      // every single time they open the app.
+      const ENABLED_KEY = "ambulance_alert_enabled";
+      if (
+        localStorage.getItem(ENABLED_KEY) === "1" &&
+        "Notification" in window &&
+        Notification.permission === "granted"
+      ) {
+        initializeAlerts();
+      }
 
       const socket = io(API_BASE);
 
