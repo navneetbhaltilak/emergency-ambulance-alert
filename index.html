@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ambulance Alert</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0;
+            height: 100%;
+            font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+            background: #101820;
+            color: #edefea;
+        }
+        #roleScreen {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 28px;
+            text-align: center;
+        }
+        .brand-mark { font-size: 36px; margin-bottom: 6px; }
+        h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
+        .subtitle { font-size: 13px; opacity: 0.65; margin-bottom: 36px; max-width: 280px; }
+        .role-btn {
+            width: 100%;
+            max-width: 320px;
+            padding: 18px;
+            margin-bottom: 14px;
+            border: 1px solid #2b3648;
+            border-radius: 14px;
+            background: #16213e;
+            color: #edefea;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            text-align: left;
+        }
+        .role-btn:active { background: #1c2a4a; }
+        .role-icon { font-size: 24px; }
+        .role-text { display: flex; flex-direction: column; gap: 2px; }
+        .role-sub { font-size: 12px; opacity: 0.6; font-weight: 400; }
+
+        #appFrame {
+            display: none;
+            width: 100%;
+            height: 100vh;
+            border: none;
+        }
+        #switchRole {
+            display: none;
+            position: fixed;
+            top: 10px; left: 10px;
+            z-index: 2000;
+            background: rgba(16,24,32,0.8);
+            color: #edefea;
+            border: none;
+            border-radius: 20px;
+            padding: 8px 14px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="roleScreen">
+        <div class="brand-mark">🚑</div>
+        <h1>Ambulance Alert</h1>
+        <div class="subtitle">Choose how you're using this app.</div>
+
+        <button class="role-btn" data-role="driver">
+            <span class="role-icon">🚨</span>
+            <span class="role-text">Driver<span class="role-sub">Broadcast your ambulance's live location</span></span>
+        </button>
+        <button class="role-btn" data-role="citizen">
+            <span class="role-icon">📍</span>
+            <span class="role-text">Citizen<span class="role-sub">Get alerted when an ambulance is near you</span></span>
+        </button>
+        <button class="role-btn" data-role="dashboard">
+            <span class="role-icon">🗺️</span>
+            <span class="role-text">Dashboard<span class="role-sub">View all active ambulances on a map</span></span>
+        </button>
+    </div>
+
+    <button id="switchRole">‹ Switch role</button>
+    <iframe id="appFrame"></iframe>
+
+    <script>
+        const ROLE_KEY = "ambulance_app_role";
+        const URLS = {
+            driver: "driver.html",
+            citizen: "user.html",
+            dashboard: "dashboard.html",
+        };
+
+        function openRole(role) {
+            if (!URLS[role]) return;
+            document.getElementById("roleScreen").style.display = "none";
+            document.getElementById("switchRole").style.display = "block";
+            const frame = document.getElementById("appFrame");
+            frame.style.display = "block";
+            frame.src = URLS[role];
+            localStorage.setItem(ROLE_KEY, role);
+        }
+
+        function backToRoleScreen() {
+            document.getElementById("appFrame").style.display = "none";
+            document.getElementById("appFrame").src = "about:blank";
+            document.getElementById("switchRole").style.display = "none";
+            document.getElementById("roleScreen").style.display = "flex";
+            localStorage.removeItem(ROLE_KEY);
+        }
+
+        document.querySelectorAll(".role-btn").forEach((btn) => {
+            btn.addEventListener("click", () => openRole(btn.dataset.role));
+        });
+        document.getElementById("switchRole").addEventListener("click", backToRoleScreen);
+
+        const savedRole = localStorage.getItem(ROLE_KEY);
+        if (savedRole) openRole(savedRole);
+    </script>
+</body>
+</html>

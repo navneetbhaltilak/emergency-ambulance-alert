@@ -46,7 +46,7 @@
         padding: 24px;
       }
       h1 { font-size: 20px; margin: 0 0 4px; }
-      .subtitle { color: #aaa; font-size: 13px; margin-bottom: 32px; }
+      .subtitle { color: #aaa; font-size: 13px; margin-bottom: 24px; }
       input {
         width: 100%;
         max-width: 320px;
@@ -66,8 +66,8 @@
         font-weight: 600;
         cursor: pointer;
       }
-      #startBtn { background: #e63946; color: white; }
-      #startBtn:disabled { opacity: 0.6; }
+      #primaryBtn { background: #e63946; color: white; }
+      #primaryBtn:disabled { opacity: 0.6; }
       .secondary-btn { background: #333; color: white; margin-top: 10px; }
       .field-wrap { position: relative; width: 100%; max-width: 320px; }
       #suggestionsBox {
@@ -103,6 +103,17 @@
       }
       .gps-fail-actions { display: flex; gap: 10px; }
       .gps-fail-actions button { margin-top: 0; }
+
+      .mode-toggle {
+        max-width: 320px;
+        width: 100%;
+        text-align: center;
+        font-size: 12.5px;
+        color: #8fa3ff;
+        cursor: pointer;
+        margin: -6px 0 16px;
+        text-decoration: underline;
+      }
 
       #activeScreen { display: none; min-height: 100vh; flex-direction: column; }
       #routeMap {
@@ -210,7 +221,7 @@
 
     <div id="setupScreen">
       <h1>🚑 Ambulance Driver</h1>
-      <div class="subtitle">Real-time emergency location broadcast</div>
+      <div class="subtitle" id="subtitleText">Real-time emergency location broadcast</div>
       <div class="setup-note" id="setupNote" style="display:none;"></div>
 
       <input
@@ -218,7 +229,18 @@
         id="ambulanceId"
         placeholder="Ambulance ID (e.g. AMB001)"
       />
-      <div class="field-wrap">
+      <input
+        type="text"
+        id="vehicleNumber"
+        placeholder="Vehicle number (e.g. MH-29-AB-1234)"
+        style="display:none;"
+      />
+      <input
+        type="password"
+        id="password"
+        placeholder="Password"
+      />
+      <div class="field-wrap" id="destWrap">
         <input
           type="text"
           id="destination"
@@ -236,7 +258,8 @@
         </div>
       </div>
 
-      <button id="startBtn">🔴 Start Emergency</button>
+      <button id="primaryBtn">🔴 Start Emergency</button>
+      <div class="mode-toggle" id="modeToggle">New ambulance? Register it here</div>
     </div>
 
     <div id="activeScreen">
@@ -279,28 +302,14 @@
     <script>
       const API_BASE = "https://emergency-ambulance-alert.onrender.com";
       const AMB_ID_KEY = "ambulance_driver_id";
-      const DRIVER_KEY_STORAGE = "ambulance_driver_key";
+      // Password lives in sessionStorage: reused for every location ping
+      // during this tab session (can't re-prompt every 5 seconds) and
+      // survives a same-tab refresh, but is gone once the tab/browser
+      // actually closes — better hygiene than a permanent localStorage
+      // password, while still not asking on every single request.
+      const PASSWORD_KEY = "ambulance_driver_password";
 
-      // The backend now checks this on start/location/end once
-      // DRIVER_API_KEY is set server-side. Prompted once, then reused from
-      // localStorage. Empty string is fine while the backend is still in
-      // compatibility mode (no key configured).
-      function getDriverKey() {
-        let key = localStorage.getItem(DRIVER_KEY_STORAGE);
-        if (key === null) {
-          key = prompt(
-            "Enter your driver key (ask your coordinator if you don't have one). Leave blank if none has been issued yet.",
-            "",
-          ) || "";
-          localStorage.setItem(DRIVER_KEY_STORAGE, key);
-        }
-        return key;
-      }
-      function authHeaders() {
-        const key = getDriverKey();
-        return key ? { "X-Driver-Key": key } : {};
-      }
-
+      let registerMode = false;
       let watchId = null;
       let lastSendTime = 0;
       const SEND_INTERVAL_MS = 5000;
@@ -342,6 +351,20 @@
       document.getElementById("ambulanceId").addEventListener("change", (e) => {
         localStorage.setItem(AMB_ID_KEY, e.target.value.trim());
       });
+
+      function setRegisterMode(on) {
+        registerMode = on;
+        document.getElementById("vehicleNumber").style.display = on ? "block" : "none";
+        document.getElementById("destWrap").style.display = on ? "none" : "block";
+        document.getElementById("primaryBtn").innerHTML = on ? "✅ Register Ambulance" : "🔴 Start Emergency";
+        document.getElementById("modeToggle").innerText = on
+          ? "Already registered? Back to Start Emergency"
+          : "New ambulance? Register it here";
+        document.getElementById("subtitleText").innerText = on
+          ? "One-time setup for a new ambulance"
+          : "Real-time emergency location broadcast";
+      }
+      document.getElementById("modeToggle").onclick = () => setRegisterMode(!registerMode);
 
       document.getElementById("destination").addEventListener("input", (e) => {
         const query = e.target.value.trim();
@@ -480,23 +503,31 @@
         if (data.status === "emergency") {
           destLat = data.destination_lat ?? null;
           destLng = data.destination_lng ?? null;
-          enterActiveScreen(ambulanceId, data.destination);
-          if (data.route_geojson) {
-            try {
-              showRoute(data.route_geojson, data.destination);
-            } catch (err) {
-              console.error("Failed to redraw route on refresh:", err);
+          const cachedPassword = sessionStorage.getItem(PASSWORD_KEY);
+          if (cachedPassword) {
+            // Same-tab refresh — we still have the password, resume seamlessly.
+            enterActiveScreen(ambulanceId, data.destination);
+            if (data.route_geojson) {
+              try { showRoute(data.route_geojson, data.destination); }
+              catch (err) { console.error("Failed to redraw route on refresh:", err); }
             }
+            startTracking(ambulanceId);
+          } else {
+            // New session (browser/tab was actually closed) — need the
+            // password again before we can resume sending location pings.
+            document.getElementById("setupNote").style.display = "block";
+            document.getElementById("setupNote").innerText =
+              `${ambulanceId} has an emergency already running. Enter the password to resume broadcasting.`;
+            document.getElementById("destWrap").style.display = "none";
+            document.getElementById("primaryBtn").innerHTML = "▶️ Resume Broadcasting";
+            document.getElementById("primaryBtn").dataset.resume = "1";
+            showScreen("setupScreen");
           }
-          startTracking(ambulanceId);
         } else {
           showScreen("setupScreen");
         }
       }
 
-      // Wraps navigator.geolocation.getCurrentPosition with an actual
-      // timeout and Retry/Cancel affordances. Before this, a stuck GPS fix
-      // meant the Start button could sit disabled forever with no way out.
       function getLocationWithTimeout() {
         return new Promise((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, {
@@ -510,23 +541,106 @@
       function showGpsFail(message) {
         document.getElementById("gpsFailBox").style.display = "block";
         document.getElementById("gpsFailText").innerText = message;
-        const btn = document.getElementById("startBtn");
-        btn.disabled = false;
-        btn.innerHTML = "🔴 Start Emergency";
+        resetPrimaryBtn();
       }
       function hideGpsFail() {
         document.getElementById("gpsFailBox").style.display = "none";
+      }
+      function resetPrimaryBtn() {
+        const btn = document.getElementById("primaryBtn");
+        btn.disabled = false;
+        if (btn.dataset.resume === "1") {
+          btn.innerHTML = "▶️ Resume Broadcasting";
+        } else if (registerMode) {
+          btn.innerHTML = "✅ Register Ambulance";
+        } else {
+          btn.innerHTML = "🔴 Start Emergency";
+        }
+      }
+
+      async function attemptRegister() {
+        const ambulanceId = document.getElementById("ambulanceId").value.trim();
+        const vehicleNumber = document.getElementById("vehicleNumber").value.trim();
+        const password = document.getElementById("password").value;
+
+        if (!ambulanceId || !vehicleNumber) {
+          alert("Enter both an ambulance ID and vehicle number.");
+          return;
+        }
+        if (!password || password.length < 6) {
+          alert("Choose a password of at least 6 characters — you'll need it every time you start an emergency.");
+          return;
+        }
+        if (!navigator.geolocation) {
+          alert("Geolocation not supported on this device");
+          return;
+        }
+
+        const btn = document.getElementById("primaryBtn");
+        btn.disabled = true;
+        btn.innerHTML = "⏳ Getting your location...";
+
+        let pos;
+        try {
+          pos = await getLocationWithTimeout();
+        } catch (err) {
+          showGpsFail("Couldn't get your location to register this ambulance. Try again with a clearer sky view.");
+          return;
+        }
+
+        btn.innerHTML = "⏳ Registering...";
+        try {
+          const resp = await fetch(`${API_BASE}/api/ambulance/register`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ambulance_id: ambulanceId,
+              vehicle_number: vehicleNumber,
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              password: password,
+            }),
+          });
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || `Server returned ${resp.status}`);
+
+          localStorage.setItem(AMB_ID_KEY, ambulanceId);
+          sessionStorage.setItem(PASSWORD_KEY, password);
+          alert(
+            data.status === "password_set"
+              ? "Password set for this ambulance. You can now start emergencies with it."
+              : "Ambulance registered! You can now start emergencies with this password.",
+          );
+          setRegisterMode(false);
+          resetPrimaryBtn();
+        } catch (err) {
+          alert("Registration failed: " + err.message);
+          resetPrimaryBtn();
+        }
       }
 
       async function attemptStart() {
         const ambulanceId = document.getElementById("ambulanceId").value.trim();
         const destination = document.getElementById("destination").value.trim();
+        const password = document.getElementById("password").value;
+        const isResume = document.getElementById("primaryBtn").dataset.resume === "1";
 
         if (!ambulanceId) {
           alert("Enter an ambulance ID");
           return;
         }
+        if (!password) {
+          alert("Enter the password for this ambulance.");
+          return;
+        }
         localStorage.setItem(AMB_ID_KEY, ambulanceId);
+
+        if (isResume) {
+          sessionStorage.setItem(PASSWORD_KEY, password);
+          checkExistingEmergency();
+          return;
+        }
+
         if (!destination) {
           alert("Enter a destination — it's needed to calculate the route, live distance, and estimated arrival time.");
           return;
@@ -537,7 +651,7 @@
         }
 
         hideGpsFail();
-        const btn = document.getElementById("startBtn");
+        const btn = document.getElementById("primaryBtn");
         btn.disabled = true;
         btn.innerHTML = "⏳ Getting your location...";
 
@@ -556,7 +670,7 @@
 
         btn.innerHTML = "⏳ Starting emergency...";
         try {
-          const body = { ambulance_id: ambulanceId, destination: destination };
+          const body = { ambulance_id: ambulanceId, destination: destination, password: password };
           if (selectedDestLat && selectedDestLng) {
             body.destination_lat = selectedDestLat;
             body.destination_lng = selectedDestLng;
@@ -564,7 +678,7 @@
 
           const resp = await fetch(`${API_BASE}/api/ambulance/emergency/start`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", ...authHeaders() },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
           });
           const data = await resp.json();
@@ -572,10 +686,11 @@
             throw new Error(data.error || `Server returned ${resp.status}`);
           }
           console.log("Emergency started:", data);
+          sessionStorage.setItem(PASSWORD_KEY, password);
           destLat = data.destination_lat ?? null;
           destLng = data.destination_lng ?? null;
 
-          btn.innerHTML = "🔴 Start Emergency";
+          resetPrimaryBtn();
           btn.disabled = false;
 
           enterActiveScreen(ambulanceId, data.destination || destination);
@@ -585,22 +700,27 @@
           startTracking(ambulanceId);
         } catch (err) {
           btn.disabled = false;
-          btn.innerHTML = "🔴 Start Emergency";
+          resetPrimaryBtn();
           alert("Failed to start emergency: " + err.message);
         }
       }
 
-      document.getElementById("startBtn").onclick = attemptStart;
-      document.getElementById("retryLocationBtn").onclick = attemptStart;
+      document.getElementById("primaryBtn").onclick = () => {
+        if (registerMode) attemptRegister();
+        else attemptStart();
+      };
+      document.getElementById("retryLocationBtn").onclick = () => {
+        if (registerMode) attemptRegister();
+        else attemptStart();
+      };
       document.getElementById("cancelLocationBtn").onclick = () => {
         hideGpsFail();
-        const btn = document.getElementById("startBtn");
-        btn.disabled = false;
-        btn.innerHTML = "🔴 Start Emergency";
+        resetPrimaryBtn();
       };
 
       document.getElementById("endBtn").onclick = async () => {
         const ambulanceId = document.getElementById("ambulanceId").value.trim();
+        const password = sessionStorage.getItem(PASSWORD_KEY) || "";
         const endBtn = document.getElementById("endBtn");
 
         endBtn.disabled = true;
@@ -614,8 +734,8 @@
         try {
           await fetch(`${API_BASE}/api/ambulance/emergency/end`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", ...authHeaders() },
-            body: JSON.stringify({ ambulance_id: ambulanceId }),
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ambulance_id: ambulanceId, password: password }),
           });
         } catch (err) {
           console.error(err);
@@ -631,6 +751,10 @@
         lastSendTime = 0;
 
         document.getElementById("destination").value = "";
+        document.getElementById("destWrap").style.display = "block";
+        document.getElementById("password").value = "";
+        delete document.getElementById("primaryBtn").dataset.resume;
+        resetPrimaryBtn();
         selectedDestLat = null;
         selectedDestLng = null;
 
@@ -648,11 +772,12 @@
         function setGpsStatus(text) { statusEl.innerText = text || ""; }
 
         async function sendLocation(lat, lng, speedKmh, accuracy) {
+          const password = sessionStorage.getItem(PASSWORD_KEY) || "";
           try {
             const resp = await fetch(`${API_BASE}/api/ambulance/location`, {
               method: "POST",
-              headers: { "Content-Type": "application/json", ...authHeaders() },
-              body: JSON.stringify({ ambulance_id: ambulanceId, latitude: lat, longitude: lng, speed: speedKmh }),
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ambulance_id: ambulanceId, latitude: lat, longitude: lng, speed: speedKmh, password: password }),
             });
             if (!resp.ok) {
               let errMsg = `Server error (${resp.status})`;
