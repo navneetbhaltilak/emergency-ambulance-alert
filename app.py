@@ -13,10 +13,10 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 import os
 import math
-import hmac
 import gevent
 from collections import defaultdict
 from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 DEFAULT_CORS_ORIGINS = ",".join([
@@ -33,10 +33,7 @@ CORS_ORIGINS = [
 CORS(app, resources={r"/api/*": {"origins": CORS_ORIGINS}})
 socketio = SocketIO(app, cors_allowed_origins=CORS_ORIGINS)
 
-DRIVER_API_KEY = os.environ.get("DRIVER_API_KEY")
 STALE_EMERGENCY_SECONDS = max(30, int(os.environ.get("STALE_EMERGENCY_SECONDS", "120")))
-if not DRIVER_API_KEY:
-    print("WARNING: DRIVER_API_KEY is not configured; driver write endpoints remain in compatibility mode.")
 
 @app.errorhandler(Exception)
 def handle_unexpected_error(e):
@@ -70,14 +67,32 @@ def get_db():
             else:
                 raise
 
-def require_driver_key(handler):
+def require_driver_password(handler):
+    """Each ambulance now has its own password (set at registration) rather
+    than every driver sharing one global key. The password travels in the
+    JSON body alongside ambulance_id, since that's what the driver app
+    already sends — no separate login/session/token machinery needed."""
     @wraps(handler)
     def wrapped(*args, **kwargs):
-        if not DRIVER_API_KEY:
-            return handler(*args, **kwargs)
-        provided_key = request.headers.get("X-Driver-Key", "")
-        if not hmac.compare_digest(provided_key, DRIVER_API_KEY):
-            return jsonify({"error": "Valid driver credentials are required."}), 401
+        data = request_json_object()
+        if data is None:
+            return jsonify({"error": "Request body must be JSON"}), 400
+        ambulance_id = data.get("ambulance_id")
+        password = data.get("password")
+        if not ambulance_id or not password:
+            return jsonify({"error": "ambulance_id and password are required"}), 401
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT password_hash FROM ambulances WHERE ambulance_id = %s", (ambulance_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if row is None:
+            return jsonify({"error": f"Ambulance '{ambulance_id}' is not registered."}), 404
+        if not row["password_hash"]:
+            return jsonify({"error": "This ambulance has no password set yet. Register it with a password first."}), 401
+        if not check_password_hash(row["password_hash"], password):
+            return jsonify({"error": "Incorrect password."}), 401
         return handler(*args, **kwargs)
     return wrapped
 
@@ -359,14 +374,13 @@ def update_user_location():
     return jsonify({"status": "updated"}), 200
 
 @app.route("/api/ambulance/register", methods=["POST"])
-@require_driver_key
 def register_ambulance():
     if rate_limited(f"register:{request.remote_addr}", 5):
         return jsonify({"error": "Too many requests, slow down."}), 429
     data = request_json_object()
     if data is None:
         return jsonify({"error": "Request body must be JSON"}), 400
-    err = require_fields(data, ["ambulance_id", "vehicle_number", "latitude", "longitude"])
+    err = require_fields(data, ["ambulance_id", "vehicle_number", "latitude", "longitude", "password"])
     if err: return err
     lat = valid_coordinate(data["latitude"], -90, 90)
     lng = valid_coordinate(data["longitude"], -180, 180)
@@ -374,14 +388,18 @@ def register_ambulance():
         return jsonify({"error": "latitude/longitude out of range or not numeric"}), 400
     ambulance_id = data["ambulance_id"]
     vehicle_number = data["vehicle_number"]
+    password = data["password"]
+    if len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters."}), 400
+    password_hash = generate_password_hash(password)
 
     conn = get_db()
     cur = conn.cursor()
     try:
         cur.execute("""
-            INSERT INTO ambulances (ambulance_id, vehicle_number, location, status)
-            VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography, 'idle')
-        """, (ambulance_id, vehicle_number, lng, lat))
+            INSERT INTO ambulances (ambulance_id, vehicle_number, location, status, password_hash)
+            VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography, 'idle', %s)
+        """, (ambulance_id, vehicle_number, lng, lat, password_hash))
         conn.commit()
         cur.close()
         conn.close()
@@ -389,12 +407,24 @@ def register_ambulance():
 
     except psycopg2.errors.UniqueViolation:
         conn.rollback()
+        # Ambulance ID already exists. If it predates password auth (no
+        # password_hash yet), let this call set one instead of hard-failing
+        # — otherwise every ambulance registered before this migration
+        # would be permanently locked out with no way back in.
+        cur.execute("SELECT password_hash FROM ambulances WHERE ambulance_id = %s", (ambulance_id,))
+        existing = cur.fetchone()
+        if existing and not existing["password_hash"]:
+            cur.execute("UPDATE ambulances SET password_hash = %s WHERE ambulance_id = %s", (password_hash, ambulance_id))
+            conn.commit()
+            cur.close()
+            conn.close()
+            return jsonify({"status": "password_set"}), 200
         cur.close()
         conn.close()
-        return jsonify({"error": f"Ambulance with ID '{ambulance_id}' is already registered."}), 409
+        return jsonify({"error": f"Ambulance with ID '{ambulance_id}' is already registered with a password. If you forgot it, this needs a manual reset."}), 409
 
 @app.route("/api/ambulance/emergency/start", methods=["POST"])
-@require_driver_key
+@require_driver_password
 def start_emergency():
     if rate_limited(f"start:{request.remote_addr}", 2):
         return jsonify({"error": "Too many requests, slow down."}), 429
@@ -500,7 +530,7 @@ def start_emergency():
     }), 201
 
 @app.route("/api/ambulance/location", methods=["POST"])
-@require_driver_key
+@require_driver_password
 def ambulance_location_ping():
     data = request_json_object()
     if data is None:
@@ -573,17 +603,21 @@ def ambulance_location_ping():
     has_route = cur.fetchone()["has_route"]
 
     for user in nearby_users:
-        if has_route:
-            if not is_near_route(cur, event_id, user["latitude"], user["longitude"]):
-                continue
-        else:
+        passes = has_route and is_near_route(cur, event_id, user["latitude"], user["longitude"], threshold_meters=500)
+        if not passes:
+            # No route, or the route check missed them (GPS drift, route
+            # snapping, being on a parallel street) — give them a second
+            # chance via direction + road proximity instead of silently
+            # excluding a genuinely nearby person. Missing a real alert is
+            # worse than sending an extra one.
+            bearing_ok = True
             if ambulance_bearing is not None:
                 bearing_to_user = calculate_bearing(lat, lng, user["latitude"], user["longitude"])
-                if not is_ahead(ambulance_bearing, bearing_to_user):
-                    continue
-            near_road = is_near_road(cur, user["latitude"], user["longitude"])
-            if not near_road:
-                continue
+                bearing_ok = is_ahead(ambulance_bearing, bearing_to_user, cone_degrees=120)
+            near_road = is_near_road(cur, user["latitude"], user["longitude"], threshold_meters=100)
+            passes = bearing_ok and near_road
+        if not passes:
+            continue
         new_level = get_alert_level(user["distance_km"])
         if new_level is None:
             continue
@@ -717,7 +751,7 @@ def get_active_emergency(ambulance_id):
     }), 200
 
 @app.route("/api/ambulance/emergency/end", methods=["POST"])
-@require_driver_key
+@require_driver_password
 def end_emergency():
     data = request_json_object()
     if data is None:
