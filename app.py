@@ -815,6 +815,13 @@ def register_device():
 
     return jsonify({"user_id": user_id}), 200
 
+@app.route("/api/health", methods=["GET"])
+def health_check():
+    # No DB call on purpose — this exists purely for an external uptime
+    # pinger to keep the free-tier instance from sleeping, so it shouldn't
+    # add any load or dependency risk of its own.
+    return jsonify({"status": "ok"}), 200
+
 @app.route("/api/dashboard/active", methods=["GET"])
 def dashboard_active():
     conn = get_db()
