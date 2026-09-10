@@ -354,8 +354,10 @@
 
       function setRegisterMode(on) {
         registerMode = on;
+        delete document.getElementById("primaryBtn").dataset.resume;
         document.getElementById("vehicleNumber").style.display = on ? "block" : "none";
         document.getElementById("destWrap").style.display = on ? "none" : "block";
+        document.getElementById("setupNote").style.display = "none";
         document.getElementById("primaryBtn").innerHTML = on ? "✅ Register Ambulance" : "🔴 Start Emergency";
         document.getElementById("modeToggle").innerText = on
           ? "Already registered? Back to Start Emergency"
@@ -506,6 +508,7 @@
           const cachedPassword = sessionStorage.getItem(PASSWORD_KEY);
           if (cachedPassword) {
             // Same-tab refresh — we still have the password, resume seamlessly.
+            delete document.getElementById("primaryBtn").dataset.resume;
             enterActiveScreen(ambulanceId, data.destination);
             if (data.route_geojson) {
               try { showRoute(data.route_geojson, data.destination); }
@@ -519,11 +522,18 @@
             document.getElementById("setupNote").innerText =
               `${ambulanceId} has an emergency already running. Enter the password to resume broadcasting.`;
             document.getElementById("destWrap").style.display = "none";
-            document.getElementById("primaryBtn").innerHTML = "▶️ Resume Broadcasting";
             document.getElementById("primaryBtn").dataset.resume = "1";
+            resetPrimaryBtn();
             showScreen("setupScreen");
           }
         } else {
+          // This ambulance ID has no active emergency — clear any stale
+          // resume state left over from checking a different ID earlier,
+          // otherwise Start/Register can silently misbehave as "resume".
+          delete document.getElementById("primaryBtn").dataset.resume;
+          document.getElementById("destWrap").style.display = registerMode ? "none" : "block";
+          document.getElementById("setupNote").style.display = "none";
+          resetPrimaryBtn();
           showScreen("setupScreen");
         }
       }
@@ -549,10 +559,10 @@
       function resetPrimaryBtn() {
         const btn = document.getElementById("primaryBtn");
         btn.disabled = false;
-        if (btn.dataset.resume === "1") {
-          btn.innerHTML = "▶️ Resume Broadcasting";
-        } else if (registerMode) {
+        if (registerMode) {
           btn.innerHTML = "✅ Register Ambulance";
+        } else if (btn.dataset.resume === "1") {
+          btn.innerHTML = "▶️ Resume Broadcasting";
         } else {
           btn.innerHTML = "🔴 Start Emergency";
         }
