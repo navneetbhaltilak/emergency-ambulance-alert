@@ -17,6 +17,8 @@ import gevent
 from collections import defaultdict
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
+from psycogreen.gevent import patch_psycopg
+patch_psycopg()
 
 app = Flask(__name__)
 DEFAULT_CORS_ORIGINS = ",".join([
