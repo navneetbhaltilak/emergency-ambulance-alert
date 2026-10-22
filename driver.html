@@ -789,31 +789,44 @@
       // Keeps the ambulance icon and the red line in sync with the driver's
       // real GPS position. The line is redrawn from the ambulance's current
       // position to the end of the route, so it always starts at the icon
-      // and gets shorter as the ambulance moves.
+      // and gets shorter as the ambulance moves. If the ambulance is far
+      // from the planned route (GPS jump, wrong turn), the full planned
+      // route is shown instead of a fake straight connector.
       function updateLiveRoute(lat, lng) {
         if (ambulanceMapMarker) ambulanceMapMarker.setLatLng([lat, lng]);
-        if (!routeLine || routeLatLngs.length === 0) return;
+        if (!routeLine || routeLatLngs.length < 2) return;
 
-        let nearest = 0;
-        let best = Infinity;
-        for (let i = 0; i < routeLatLngs.length; i++) {
-          const dLat = routeLatLngs[i][0] - lat;
-          const dLng = routeLatLngs[i][1] - lng;
-          const d = dLat * dLat + dLng * dLng;
-          if (d < best) {
-            best = d;
-            nearest = i;
+        // Distance (metres, flat approximation) from the ambulance to each
+        // route SEGMENT — not just each point, because route points can be
+        // hundreds of metres apart on long straight roads.
+        const mPerLat = 111320;
+        const mPerLng = 111320 * Math.cos((lat * Math.PI) / 180);
+        let bestSeg = 0;
+        let bestDist = Infinity;
+        for (let i = 0; i < routeLatLngs.length - 1; i++) {
+          const ax = (routeLatLngs[i][1] - lng) * mPerLng;
+          const ay = (routeLatLngs[i][0] - lat) * mPerLat;
+          const bx = (routeLatLngs[i + 1][1] - lng) * mPerLng;
+          const by = (routeLatLngs[i + 1][0] - lat) * mPerLat;
+          const dx = bx - ax;
+          const dy = by - ay;
+          const len2 = dx * dx + dy * dy;
+          let t = len2 === 0 ? 0 : -(ax * dx + ay * dy) / len2;
+          t = Math.max(0, Math.min(1, t));
+          const px = ax + t * dx;
+          const py = ay + t * dy;
+          const d = Math.sqrt(px * px + py * py);
+          if (d < bestDist) {
+            bestDist = d;
+            bestSeg = i;
           }
         }
-        // If the ambulance is already past the nearest point, start from the
-        // next one so the line doesn't hook backwards behind the icon.
-        if (nearest < routeLatLngs.length - 1) {
-          const a = routeLatLngs[nearest];
-          const b = routeLatLngs[nearest + 1];
-          const dot = (b[0] - a[0]) * (lat - a[0]) + (b[1] - a[1]) * (lng - a[1]);
-          if (dot > 0) nearest += 1;
+
+        if (bestDist > 200) {
+          routeLine.setLatLngs(routeLatLngs);
+          return;
         }
-        routeLine.setLatLngs([[lat, lng], ...routeLatLngs.slice(nearest)]);
+        routeLine.setLatLngs([[lat, lng], ...routeLatLngs.slice(bestSeg + 1)]);
       }
 
       function startTracking(ambulanceId) {
