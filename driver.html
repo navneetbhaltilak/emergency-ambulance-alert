@@ -324,6 +324,7 @@
       let destLat = null;
       let destLng = null;
       let recentSpeeds = [];
+      let routeLatLngs = [];
 
       function showScreen(id) {
         ["loadingScreen", "setupScreen", "activeScreen"].forEach((s) => {
@@ -440,6 +441,7 @@
 
         if (routeLine) routeMap.removeLayer(routeLine);
         const latlngs = routeGeojson.coordinates.map((c) => [c[1], c[0]]);
+        routeLatLngs = latlngs;
         routeLine = L.polyline(latlngs, { color: "#e63946", weight: 5 }).addTo(routeMap);
 
         if (destMarker) routeMap.removeLayer(destMarker);
@@ -680,7 +682,13 @@
 
         btn.innerHTML = "⏳ Starting emergency...";
         try {
-          const body = { ambulance_id: ambulanceId, destination: destination, password: password };
+          const body = {
+            ambulance_id: ambulanceId,
+            destination: destination,
+            password: password,
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+          };
           if (selectedDestLat && selectedDestLng) {
             body.destination_lat = selectedDestLat;
             body.destination_lng = selectedDestLng;
@@ -761,6 +769,7 @@
         lastSendTime = 0;
 
         document.getElementById("destination").value = "";
+        routeLatLngs = [];
         document.getElementById("destWrap").style.display = "block";
         document.getElementById("password").value = "";
         delete document.getElementById("primaryBtn").dataset.resume;
@@ -776,6 +785,36 @@
 
         showScreen("setupScreen");
       };
+
+      // Keeps the ambulance icon and the red line in sync with the driver's
+      // real GPS position. The line is redrawn from the ambulance's current
+      // position to the end of the route, so it always starts at the icon
+      // and gets shorter as the ambulance moves.
+      function updateLiveRoute(lat, lng) {
+        if (ambulanceMapMarker) ambulanceMapMarker.setLatLng([lat, lng]);
+        if (!routeLine || routeLatLngs.length === 0) return;
+
+        let nearest = 0;
+        let best = Infinity;
+        for (let i = 0; i < routeLatLngs.length; i++) {
+          const dLat = routeLatLngs[i][0] - lat;
+          const dLng = routeLatLngs[i][1] - lng;
+          const d = dLat * dLat + dLng * dLng;
+          if (d < best) {
+            best = d;
+            nearest = i;
+          }
+        }
+        // If the ambulance is already past the nearest point, start from the
+        // next one so the line doesn't hook backwards behind the icon.
+        if (nearest < routeLatLngs.length - 1) {
+          const a = routeLatLngs[nearest];
+          const b = routeLatLngs[nearest + 1];
+          const dot = (b[0] - a[0]) * (lat - a[0]) + (b[1] - a[1]) * (lng - a[1]);
+          if (dot > 0) nearest += 1;
+        }
+        routeLine.setLatLngs([[lat, lng], ...routeLatLngs.slice(nearest)]);
+      }
 
       function startTracking(ambulanceId) {
         const statusEl = document.getElementById("gpsStatus");
@@ -846,6 +885,8 @@
           const accuracy = pos.coords.accuracy;
           const speedMs = pos.coords.speed;
           const speedKmh = speedMs ? Math.round(speedMs * 3.6) : 0;
+
+          updateLiveRoute(lat, lng);
 
           if (now - lastSendTime < SEND_INTERVAL_MS) return;
           lastSendTime = now;
