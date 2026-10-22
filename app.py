@@ -457,6 +457,14 @@ def start_emergency():
         conn.close()
         return jsonify({"error": f"Ambulance '{ambulance_id}' is not registered. Register it first."}), 404
 
+    # Route from where the driver actually is right now, not from the
+    # ambulance's last stored location (which can be left over from an
+    # old emergency somewhere else).
+    start_lat = valid_coordinate(data.get("latitude"), -90, 90)
+    start_lng = valid_coordinate(data.get("longitude"), -180, 180)
+    if start_lat is not None and start_lng is not None:
+        amb_loc = {"lat": start_lat, "lng": start_lng}
+
     # Idempotent start: if this ambulance already has an active emergency
     # (double-tapped Start, retried after a network blip), resume the
     # existing one instead of creating a duplicate event.
@@ -466,6 +474,14 @@ def start_emergency():
         ORDER BY start_time DESC LIMIT 1
     """, (ambulance_id,))
     existing_event = cur.fetchone()
+    if existing_event:
+        cur.execute("SELECT destination FROM ambulances WHERE ambulance_id = %s", (ambulance_id,))
+        old_destination = (cur.fetchone()["destination"] or "").strip().lower()
+        if old_destination != destination.strip().lower():
+            # A different destination means a NEW emergency. Close the old
+            # one instead of silently resuming it with the old pin and route.
+            end_emergency_and_notify(ambulance_id)
+            existing_event = None
     if existing_event:
         cur.execute("SELECT destination FROM ambulances WHERE ambulance_id = %s", (ambulance_id,))
         existing_destination = cur.fetchone()["destination"]
@@ -502,8 +518,13 @@ def start_emergency():
             print(f"Routing failed: {e}")
 
     cur.execute("""
-        UPDATE ambulances SET status = 'emergency', destination = %s WHERE ambulance_id = %s
-    """, (destination, ambulance_id))
+        UPDATE ambulances
+        SET status = 'emergency', destination = %s,
+            location = ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
+            prev_latitude = NULL, prev_longitude = NULL,
+            last_updated = NOW()
+        WHERE ambulance_id = %s
+    """, (destination, amb_loc["lng"], amb_loc["lat"], ambulance_id))
 
     route_geom_sql = None
     if route_geojson:
