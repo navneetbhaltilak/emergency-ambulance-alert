@@ -508,7 +508,35 @@
         document.getElementById("radarStage").style.display = "block";
         document.getElementById("readout").style.display = "block";
 
+        // Ask for notification permission FIRST, directly inside the tap.
+        // Browsers only show the prompt shortly after a user gesture. If it
+        // waits behind a slow network call (e.g. the backend waking up) the
+        // gesture has expired and the prompt gets silently blocked.
+        const permissionPromise =
+          "Notification" in window
+            ? Notification.requestPermission()
+            : Promise.resolve("unsupported");
+
         try {
+          setLevel("setup", "Setting up…", "Asking for notification permission.");
+          const permission = await permissionPromise;
+          if (permission === "unsupported") {
+            setLevel(
+              "setup",
+              "Notifications not supported",
+              "This browser can't show alerts. If you opened this link inside WhatsApp, Instagram or another app, open it in Chrome instead.",
+            );
+            return;
+          }
+          if (permission !== "granted") {
+            setLevel(
+              "setup",
+              "Notifications are blocked",
+              "Tap the lock icon in the address bar, open Permissions, allow Notifications, then reload this page.",
+            );
+            return;
+          }
+
           setLevel("setup", "Setting up…", "Registering this device.");
           const deviceId = getDeviceId();
           const regResp = await fetch(`${API_BASE}/api/users/register-device`, {
@@ -517,22 +545,10 @@
             body: JSON.stringify({ device_id: deviceId }),
           });
           const regData = await regResp.json();
-          USER_ID = regData.user_id;
-
-          setLevel(
-            "setup",
-            "Setting up…",
-            "Asking for notification permission.",
-          );
-          const permission = await Notification.requestPermission();
-          if (permission !== "granted") {
-            setLevel(
-              "setup",
-              "Notifications are off",
-              "Turn them on in your browser settings, then reload this page.",
-            );
-            return;
+          if (!regResp.ok || !regData.user_id) {
+            throw new Error(regData.error || "Couldn't register this device");
           }
+          USER_ID = regData.user_id;
 
           const registration = await navigator.serviceWorker.register(
             "firebase-messaging-sw.js",
