@@ -57,20 +57,23 @@
         #appFrame {
             display: none;
             width: 100%;
-            height: 100vh;
+            height: calc(100vh - 36px);
+            height: calc(100dvh - 36px);
             border: none;
         }
+        /* A slim bar above the app instead of a floating button, so it never
+           covers the app's own controls (map zoom buttons, LIVE badge, etc.) */
         #switchRole {
             display: none;
-            position: fixed;
-            top: 10px; left: 10px;
-            z-index: 2000;
-            background: rgba(16,24,32,0.8);
+            width: 100%;
+            height: 36px;
+            background: #101820;
             color: #edefea;
             border: none;
-            border-radius: 20px;
-            padding: 8px 14px;
+            border-bottom: 1px solid #2b3648;
+            padding: 0 14px;
             font-size: 12px;
+            text-align: left;
             cursor: pointer;
         }
     </style>
