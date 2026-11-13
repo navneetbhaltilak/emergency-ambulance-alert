@@ -9,10 +9,19 @@
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://emergency-ambulance-alert.onrender.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media = 'all'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
     <style>
       :root {
         --ink: #101820;
@@ -290,11 +299,28 @@
       #enableBtn:disabled {
         opacity: 0.6;
       }
+      .note {
+        font-size: 12px;
+        opacity: 0.8;
+        margin-top: 12px;
+        max-width: 300px;
+        text-align: center;
+        line-height: 1.4;
+      }
     </style>
   </head>
   <body data-level="setup">
     <div class="app">
       <div class="topbar">
+        <button
+          id="switchBtn"
+          class="mute-btn"
+          style="grid-column: 1; justify-self: start"
+          aria-label="Switch role"
+          title="Switch role"
+        >
+          ⇄
+        </button>
         <div class="brand">
           <span class="brand-mark">🚑</span>
           <h1>Ambulance Alert</h1>
@@ -360,17 +386,12 @@
       <div class="hint" id="tapHint" style="display:none;">
         Tap the dot to check the connection's still live.
       </div>
+      <div class="note" id="connNote" style="display: none"></div>
+      <div class="note" id="pushNote" style="display: none"></div>
     </div>
 
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script type="module">
-      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-      import {
-        getMessaging,
-        getToken,
-        onMessage,
-      } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
-
       const API_BASE = "https://emergency-ambulance-alert.onrender.com";
 
       function getDeviceId() {
@@ -411,8 +432,38 @@
         messagingSenderId: "487464125337",
         appId: "1:487464125337:web:d69f15c29f32921b1f4908",
       };
-      const app = initializeApp(firebaseConfig);
-      const messaging = getMessaging(app);
+
+      // Firebase is only needed for push notifications. Importing it at the
+      // top of the page meant NOTHING on the page worked until several
+      // Firebase files had downloaded. Now it loads on demand, and is warmed
+      // up in the background so it's usually ready by the time someone taps
+      // Enable Alerts.
+      const FB_BASE = "https://www.gstatic.com/firebasejs/10.12.0";
+      let firebasePromise = null;
+      function loadFirebase() {
+        if (!firebasePromise) {
+          firebasePromise = Promise.all([
+            import(`${FB_BASE}/firebase-app.js`),
+            import(`${FB_BASE}/firebase-messaging.js`),
+          ]).then(([appModule, messagingModule]) => {
+            const app = appModule.initializeApp(firebaseConfig);
+            const messaging = messagingModule.getMessaging(app);
+            messagingModule.onMessage(messaging, (payload) => {
+              console.log("Message received in foreground:", payload);
+              const level = payload.data?.level;
+              if (level) playAlertSound(level);
+            });
+            return { messaging, getToken: messagingModule.getToken };
+          });
+          firebasePromise.catch(() => {
+            firebasePromise = null; // allow a retry later
+          });
+        }
+        return firebasePromise;
+      }
+      if ("Notification" in window && Notification.permission !== "denied") {
+        setTimeout(() => loadFirebase().catch(() => {}), 500);
+      }
 
       // Synthesized tones instead of external mp3 files — no asset to go
       // missing, and every severity level is guaranteed to have a sound
@@ -487,17 +538,138 @@
         }
       }
 
-      onMessage(messaging, (payload) => {
-        console.log("Message received in foreground:", payload);
-        const level = payload.data?.level;
-        if (level) playAlertSound(level);
-      });
-
       function setLevel(level, label, desc) {
         currentLevel = level;
         document.body.dataset.level = level;
         document.getElementById("levelLabel").innerText = label;
         document.getElementById("levelDescription").innerText = desc;
+      }
+
+      const ENABLED_KEY = "ambulance_alert_enabled";
+      const USER_ID_KEY = "ambulance_alert_user_id";
+      const TOKEN_SENT_KEY = "ambulance_alert_token_sent";
+      const VAPID_KEY =
+        "BPWOIImb1JqzHCIHgBIVb766CVEJ2Ka457SHGhDK7d41IKoftXgWQUMokd1fYa9ofEWxT2_kX6mDeUI2jNFJbFU";
+      const LOCATION_SEND_EVERY_MS = 10000;
+      const LOCATION_SEND_MIN_MOVE_KM = 0.03;
+      let lastSentAt = 0;
+      let lastSentLat = null;
+      let lastSentLng = null;
+
+      function showNote(id, text) {
+        const el = document.getElementById(id);
+        el.innerText = text || "";
+        el.style.display = text ? "block" : "none";
+      }
+
+      async function registerDevice() {
+        const resp = await fetch(`${API_BASE}/api/users/register-device`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ device_id: getDeviceId() }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.user_id) {
+          throw new Error(data.error || "Couldn't register this device");
+        }
+        USER_ID = data.user_id;
+        localStorage.setItem(USER_ID_KEY, String(data.user_id));
+        return data.user_id;
+      }
+
+      // Service worker + Firebase token + saving the token on the server.
+      // A problem here must not stop the live radar from working.
+      async function setupPush(registerPromise) {
+        try {
+          const registration = await navigator.serviceWorker.register(
+            "firebase-messaging-sw.js",
+          );
+          await navigator.serviceWorker.ready;
+          const { messaging, getToken } = await loadFirebase();
+          const token = await getToken(messaging, {
+            vapidKey: VAPID_KEY,
+            serviceWorkerRegistration: registration,
+          });
+          const userId = await registerPromise;
+          const sentKey = `${userId}:${token}`;
+          if (localStorage.getItem(TOKEN_SENT_KEY) !== sentKey) {
+            const resp = await fetch(`${API_BASE}/api/users/update-token`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ user_id: userId, fcm_token: token }),
+            });
+            if (!resp.ok) throw new Error("couldn't save the notification token");
+            localStorage.setItem(TOKEN_SENT_KEY, sentKey);
+          }
+          showNote("pushNote", "");
+        } catch (err) {
+          console.error("Push setup failed:", err);
+          showNote(
+            "pushNote",
+            "Push alerts aren't working on this device (" +
+              err.message +
+              "). The live radar still works while this page is open.",
+          );
+        }
+      }
+
+      function startLocationTracking(registerPromise) {
+        if (!navigator.geolocation) {
+          setLevel(
+            "setup",
+            "Location not supported",
+            "This device can't share location, so we can't measure distance.",
+          );
+          return;
+        }
+        setLevel("setup", "Setting up…", "Getting your location.");
+        navigator.geolocation.watchPosition(
+          async (pos) => {
+            userLat = pos.coords.latitude;
+            userLng = pos.coords.longitude;
+            try {
+              // First visit: wait for the device to be registered. Returning
+              // visit: the saved user id is used straight away.
+              await (USER_ID || registerPromise);
+              if (currentLevel === "setup") showIdleState();
+
+              // GPS fires about once a second. Telling the server that often
+              // slowed everything down, so send at most every 10 seconds
+              // unless the person has actually moved.
+              const now = Date.now();
+              const moved =
+                lastSentLat === null
+                  ? Infinity
+                  : haversineDistance(lastSentLat, lastSentLng, userLat, userLng);
+              if (now - lastSentAt < LOCATION_SEND_EVERY_MS && moved < LOCATION_SEND_MIN_MOVE_KM) {
+                return;
+              }
+              lastSentAt = now;
+              lastSentLat = userLat;
+              lastSentLng = userLng;
+              await fetch(`${API_BASE}/api/users/location`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  user_id: USER_ID,
+                  latitude: userLat,
+                  longitude: userLng,
+                }),
+              });
+            } catch (err) {
+              console.error("Location update failed:", err);
+            }
+          },
+          (err) => {
+            console.error("Location error:", err);
+            setLevel(
+              "setup",
+              "Location is off",
+              "Turn it on in your browser settings, then reload this page.",
+            );
+          },
+          { enableHighAccuracy: true, maximumAge: 5000 },
+        );
       }
 
       async function initializeAlerts() {
@@ -510,8 +682,8 @@
 
         // Ask for notification permission FIRST, directly inside the tap.
         // Browsers only show the prompt shortly after a user gesture. If it
-        // waits behind a slow network call (e.g. the backend waking up) the
-        // gesture has expired and the prompt gets silently blocked.
+        // waits behind a slow network call the gesture has expired and the
+        // prompt gets silently blocked.
         const permissionPromise =
           "Notification" in window
             ? Notification.requestPermission()
@@ -536,92 +708,36 @@
             );
             return;
           }
-
-          setLevel("setup", "Setting up…", "Registering this device.");
-          const deviceId = getDeviceId();
-          const regResp = await fetch(`${API_BASE}/api/users/register-device`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ device_id: deviceId }),
-          });
-          const regData = await regResp.json();
-          if (!regResp.ok || !regData.user_id) {
-            throw new Error(regData.error || "Couldn't register this device");
-          }
-          USER_ID = regData.user_id;
-
-          const registration = await navigator.serviceWorker.register(
-            "firebase-messaging-sw.js",
-          );
-          await navigator.serviceWorker.ready;
-
-          const token = await getToken(messaging, {
-            vapidKey:
-              "BPWOIImb1JqzHCIHgBIVb766CVEJ2Ka457SHGhDK7d41IKoftXgWQUMokd1fYa9ofEWxT2_kX6mDeUI2jNFJbFU",
-            serviceWorkerRegistration: registration,
-          });
-          await fetch(`${API_BASE}/api/users/update-token`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ user_id: USER_ID, fcm_token: token }),
-          });
-
-          setLevel("setup", "Setting up…", "Asking for your location.");
           localStorage.setItem(ENABLED_KEY, "1");
-          if (!navigator.geolocation) {
-            setLevel(
-              "setup",
-              "Location not supported",
-              "This device can't share location, so we can't measure distance.",
-            );
-            return;
-          }
 
-          navigator.geolocation.watchPosition(
-            async (pos) => {
-              userLat = pos.coords.latitude;
-              userLng = pos.coords.longitude;
+          const savedId = Number(localStorage.getItem(USER_ID_KEY));
+          if (savedId) USER_ID = savedId;
 
-              await fetch(`${API_BASE}/api/users/location`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  user_id: USER_ID,
-                  latitude: userLat,
-                  longitude: userLng,
-                }),
-              });
-
-              if (currentLevel === "setup") {
-                showIdleState();
-              }
-            },
-            (err) => {
-              console.error("Location error:", err);
+          // These used to run one after another (three server calls plus
+          // Firebase) before anything appeared. Now they run side by side.
+          const registerPromise = registerDevice();
+          registerPromise.catch((err) => {
+            console.error("Device registration failed:", err);
+            if (!USER_ID) {
               setLevel(
                 "setup",
-                "Location is off",
-                "Turn it on in your browser settings, then reload this page.",
+                "Can't reach the server",
+                "It may be waking up. Reload this page in a minute. (" + err.message + ")",
               );
-            },
-            { enableHighAccuracy: true, maximumAge: 5000 },
-          );
+            }
+          });
+          setupPush(registerPromise);
+          startLocationTracking(registerPromise);
         } catch (err) {
           setLevel("setup", "Setup failed", "Error: " + err.message);
           console.error(err);
         }
       }
 
-      // Nothing runs until the user explicitly opts in — permissions,
-      // service worker registration, and location tracking all used to
-      // start automatically on page load, before the user had any control.
       document.getElementById("enableBtn").addEventListener("click", initializeAlerts);
 
-      // But that opt-in should only be asked for once. If notification
-      // permission is already granted from a previous visit, skip straight
-      // to live mode instead of making the user tap Enable Alerts again
-      // every single time they open the app.
-      const ENABLED_KEY = "ambulance_alert_enabled";
+      // The permission only needs asking once. If it was already granted on
+      // a previous visit, skip the button and start straight away.
       if (
         localStorage.getItem(ENABLED_KEY) === "1" &&
         "Notification" in window &&
@@ -649,6 +765,21 @@
         updateLive(distanceKm, data.destination, bearing);
       });
       socket.on("ambulance_ended", () => showIdleState());
+
+      let everConnected = false;
+      socket.on("connect", () => {
+        everConnected = true;
+        showNote("connNote", "");
+      });
+      socket.on("disconnect", () => showNote("connNote", "Connection lost — reconnecting…"));
+      setTimeout(() => {
+        if (!everConnected) {
+          showNote(
+            "connNote",
+            "Connecting to the alert server… if it was idle this can take up to a minute.",
+          );
+        }
+      }, 3000);
 
       function haversineDistance(lat1, lon1, lat2, lon2) {
         const R = 6371;
@@ -790,6 +921,16 @@
       document
         .getElementById("youDot")
         .addEventListener("click", spawnTapRipple);
+      document.getElementById("youDot").addEventListener("click", () => {
+        const hint = document.getElementById("tapHint");
+        hint.innerText = socket.connected
+          ? "Connected to the alert server ✓"
+          : "Not connected yet — retrying…";
+        hint.style.display = "block";
+      });
+      document.getElementById("switchBtn").addEventListener("click", () => {
+        location.replace("index.html?choose=1");
+      });
     </script>
   </body>
 </html>

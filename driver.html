@@ -260,6 +260,7 @@
 
       <button id="primaryBtn">🔴 Start Emergency</button>
       <div class="mode-toggle" id="modeToggle">New ambulance? Register it here</div>
+      <div class="mode-toggle" id="switchRoleLink" style="margin-top: 0">Not a driver? Switch role</div>
     </div>
 
     <div id="activeScreen">
@@ -368,6 +369,7 @@
           : "Real-time emergency location broadcast";
       }
       document.getElementById("modeToggle").onclick = () => setRegisterMode(!registerMode);
+      document.getElementById("switchRoleLink").onclick = () => location.replace("index.html?choose=1");
 
       document.getElementById("destination").addEventListener("input", (e) => {
         const query = e.target.value.trim();
