@@ -663,7 +663,7 @@ def ambulance_location_ping():
             if ambulance_bearing is not None:
                 bearing_to_user = calculate_bearing(lat, lng, user["latitude"], user["longitude"])
                 bearing_ok = is_ahead(ambulance_bearing, bearing_to_user, cone_degrees=120)
-            near_road = is_near_road(cur, user["latitude"], user["longitude"], threshold_meters=100)
+            near_road = is_near_road(cur, user["latitude"], user["longitude"], threshold_meters=150)
             passes = bearing_ok and near_road
         if not passes:
             continue
