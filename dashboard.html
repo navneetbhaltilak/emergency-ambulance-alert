@@ -3,39 +3,41 @@
 <head>
     <title>Ambulance Alert Dashboard</title>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="preconnect" href="https://tile.openstreetmap.org" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+    <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin />
+    <link rel="preconnect" href="https://emergency-ambulance-alert.onrender.com" crossorigin />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
     <script>
         const API_BASE = "https://emergency-ambulance-alert.onrender.com";
+        try { localStorage.setItem("ambulance_app_role", "dashboard"); } catch (e) {}
 
-        // Ask the server for the active ambulances RIGHT NOW, while the map
-        // library is still downloading. Before, this request only started
-        // after the map library and the socket library had both finished
-        // loading, so the two waits were added together instead of overlapping.
+        // Start fetching active ambulances immediately in parallel with map CSS/JS
         window.activeRequest = fetch(`${API_BASE}/api/dashboard/active`).then((r) => {
             if (!r.ok) throw new Error("HTTP " + r.status);
             return r.json();
         });
-        window.activeRequest.catch(() => {}); // real handling happens below
+        window.activeRequest.catch(() => {});
     </script>
     <style>
-        body { margin: 0; font-family: sans-serif; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #e8e6e1; }
         #map { height: 100vh; width: 100%; }
         #status {
-            position: absolute; top: 10px; left: 50px; z-index: 1000;
-            background: white; padding: 8px 12px; border-radius: 6px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.3); font-size: 14px;
-            display: flex; align-items: center; gap: 12px;
+            position: absolute; top: 12px; left: 54px; right: 12px; max-width: 340px; z-index: 1000;
+            background: white; padding: 10px 14px; border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.22); font-size: 13.5px; font-weight: 500;
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
         }
-        #switchLink {
-            font-size: 12px; color: #2a5bd7; text-decoration: none; white-space: nowrap;
+        .nav-links { display: flex; gap: 10px; align-items: center; }
+        .nav-link {
+            font-size: 12px; color: #2a5bd7; text-decoration: none; white-space: nowrap; font-weight: 600;
         }
         #sidePanel {
-            position: absolute; top: 60px; left: 50px; z-index: 1000;
-            background: white; padding: 12px 16px; border-radius: 6px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.3); font-size: 13px;
-            max-width: 250px; display: none;
+            position: absolute; top: 64px; left: 54px; z-index: 1000;
+            background: white; padding: 12px 16px; border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.22); font-size: 13px;
+            max-width: 260px; display: none;
         }
         #sidePanel h4 { margin: 0 0 8px 0; }
         #sidePanel p { margin: 4px 0; }
@@ -44,29 +46,38 @@
 </head>
 <body>
     <div id="status">
-        <span id="statusText">Connecting to the server…</span>
-        <a id="switchLink" href="index.html?choose=1" title="Switch role">⇄ Roles</a>
+        <span id="statusText">Loading map…</span>
+        <div class="nav-links">
+            <a class="nav-link" href="user.html" id="toCitizenLink">📍 Radar</a>
+            <a class="nav-link" href="driver.html" id="toDriverLink">🚨 Driver</a>
+        </div>
     </div>
     <div id="sidePanel"></div>
     <div id="map"></div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <!-- Load Leaflet from Cloudflare CDN (fast in India); DO NOT block on Socket.IO -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script>
         const statusText = document.getElementById('statusText');
         function setStatus(text) { statusText.innerText = text; }
 
-        // Center map on your test area (Yavatmal coordinates)
+        document.getElementById('toCitizenLink').addEventListener('click', () => {
+            try { localStorage.setItem("ambulance_app_role", "citizen"); } catch (e) {}
+        });
+        document.getElementById('toDriverLink').addEventListener('click', () => {
+            try { localStorage.setItem("ambulance_app_role", "driver"); } catch (e) {}
+        });
+
+        // Draw map immediately without waiting for Socket.IO or backend
         const map = L.map('map').setView([20.3897, 78.1274], 14);
 
-        // One tile host instead of a/b/c subdomains: fewer connections to set up.
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
 
-        // Emoji marker instead of Leaflet's default image, which had to be
-        // downloaded from a third-party site before any marker could appear.
+        setStatus("Connecting to server…");
+
         const ambulanceIcon = L.divIcon({
             html: '🚑', className: 'amb-div-icon', iconSize: [28, 28], iconAnchor: [14, 14]
         });
@@ -87,8 +98,6 @@
             });
         }
 
-        // Make the map match the server's list exactly: add/move what's
-        // active, remove anything that isn't any more.
         function applyActiveList(list) {
             const ids = new Set(list.map((a) => a.ambulance_id));
             Object.keys(ambulanceMarkers).forEach((id) => {
@@ -106,41 +115,52 @@
             } catch (err) {
                 console.error("Loading ambulances failed:", err);
                 if (attempt < 8) {
-                    setStatus(attempt === 0 ? "Connecting to the server…" : "Server is waking up — still trying…");
+                    setStatus(attempt === 0 ? "Connecting to server…" : "Server waking up — retrying…");
                     setTimeout(() => loadActive(attempt + 1), Math.min(3000 * (attempt + 1), 15000));
                 } else {
-                    setStatus("Couldn't reach the server. Reload to try again.");
+                    setStatus("Couldn't reach server. Reload to retry.");
                 }
             }
         }
         setTimeout(() => {
-            if (!loadedOnce) setStatus("Server is waking up — this can take up to a minute…");
+            if (!loadedOnce) setStatus("Server waking up — hang tight…");
         }, 4000);
         loadActive();
 
-        const socket = io(API_BASE);
+        // Load Socket.IO asynchronously in the background so it NEVER delays the map rendering
+        let socket = { connected: false };
         let everConnected = false;
+        (function loadSocketAsync() {
+            const s = document.createElement('script');
+            s.src = "https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js";
+            s.async = true;
+            s.onload = () => {
+                if (typeof io === "undefined") return;
+                socket = io(API_BASE, { transports: ["websocket", "polling"] });
+                socket.on('connect', () => {
+                    if (everConnected && loadedOnce) {
+                        fetchActive().then(applyActiveList).catch(() => {});
+                    }
+                    everConnected = true;
+                });
+                socket.on('ambulance_update', (data) => {
+                    updateAmbulance(data);
+                    updateStatusText();
+                });
+                socket.on('ambulance_ended', (data) => {
+                    removeAmbulance(data.ambulance_id);
+                    updateStatusText();
+                });
+            };
+            document.body.appendChild(s);
+        })();
 
-        socket.on('connect', () => {
-            console.log("Connected to live server");
-            // After a dropped connection (phone slept, network switched) we
-            // may have missed updates, so re-sync with the server's list.
-            if (everConnected && loadedOnce) {
+        // Fallback poll every 6s if WebSocket hasn't connected yet
+        setInterval(() => {
+            if (!socket.connected) {
                 fetchActive().then(applyActiveList).catch(() => {});
             }
-            everConnected = true;
-        });
-
-        socket.on('ambulance_update', (data) => {
-            updateAmbulance(data);
-            updateStatusText();
-        });
-
-        socket.on('ambulance_ended', (data) => {
-            console.log("Received ambulance_ended event:", data);
-            removeAmbulance(data.ambulance_id);
-            updateStatusText();
-        });
+        }, 6000);
 
         function updateAmbulance(amb) {
             const latlng = [amb.latitude, amb.longitude];

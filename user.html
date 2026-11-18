@@ -39,6 +39,8 @@
       * {
         box-sizing: border-box;
         -webkit-tap-highlight-color: transparent;
+        user-select: none;
+        -webkit-user-select: none;
       }
 
       html,
@@ -522,8 +524,7 @@
       <div class="note" id="pushNote" style="display: none"></div>
     </div>
 
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script type="module">
+    <script>
       const API_BASE = "https://emergency-ambulance-alert.onrender.com";
 
       try {
@@ -954,9 +955,10 @@
       document.getElementById("previewBtn").addEventListener("click", runPreviewAlert);
       document.getElementById("menuPreviewBtn").addEventListener("click", runPreviewAlert);
 
-      const socket = io(API_BASE);
+      let everConnected = false;
+      let socket = { connected: false };
 
-      socket.on("ambulance_update", (data) => {
+      function handleAmbulanceData(data) {
         if (previewRunning) stopPreview();
         if (userLat === null || userLng === null) return;
         const distanceKm = haversineDistance(
@@ -972,21 +974,54 @@
           data.longitude,
         );
         updateLive(distanceKm, data.destination, bearing);
-      });
-      socket.on("ambulance_ended", () => {
-        if (!previewRunning) showIdleState();
-      });
+      }
 
-      let everConnected = false;
-      socket.on("connect", () => {
-        everConnected = true;
-        setStepDone("stepLive", "Live Radar", true);
-        showNote("connNote", "");
-      });
-      socket.on("disconnect", () => {
-        setStepDone("stepLive", "Live Radar", false);
-        showNote("connNote", "Connection lost — reconnecting…");
-      });
+      // Immediately check active ambulances via fast HTTP so Live Radar is active
+      // even before Socket.IO finishes downloading or handshaking on mobile data.
+      async function pollActiveOnce() {
+        try {
+          const resp = await fetch(`${API_BASE}/api/dashboard/active`);
+          if (resp.ok) {
+            everConnected = true;
+            setStepDone("stepLive", "Live Radar", true);
+            showNote("connNote", "");
+            const list = await resp.json();
+            if (Array.isArray(list) && list.length > 0) {
+              handleAmbulanceData(list[0]);
+            }
+          }
+        } catch (e) {}
+      }
+      pollActiveOnce();
+      setInterval(() => {
+        if (!socket.connected) pollActiveOnce();
+      }, 8000);
+
+      // Load Socket.IO asynchronously from Cloudflare CDN (fast in India) without blocking the UI
+      function initSocketAsync() {
+        const s = document.createElement("script");
+        s.src = "https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js";
+        s.async = true;
+        s.onload = () => {
+          if (typeof io === "undefined") return;
+          socket = io(API_BASE, { transports: ["websocket", "polling"] });
+          socket.on("connect", () => {
+            everConnected = true;
+            setStepDone("stepLive", "Live Radar", true);
+            showNote("connNote", "");
+          });
+          socket.on("disconnect", () => {
+            showNote("connNote", "Reconnecting to live stream…");
+          });
+          socket.on("ambulance_update", handleAmbulanceData);
+          socket.on("ambulance_ended", () => {
+            if (!previewRunning) showIdleState();
+          });
+        };
+        document.body.appendChild(s);
+      }
+      initSocketAsync();
+
       setTimeout(() => {
         if (!everConnected) {
           showNote(
@@ -994,7 +1029,7 @@
             "Waking up the alert server… this can take up to 30 seconds if idle.",
           );
         }
-      }, 3500);
+      }, 4500);
 
       function haversineDistance(lat1, lon1, lat2, lon2) {
         const R = 6371;

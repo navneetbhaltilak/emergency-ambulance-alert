@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#1a1a2e" />
     <link
       rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
     />
     <style>
       * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -430,7 +430,7 @@
       </div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script>
       const API_BASE = "https://emergency-ambulance-alert.onrender.com";
       const AMB_ID_KEY = "ambulance_driver_id";
@@ -669,6 +669,11 @@
         if (!ambulanceId || !savedPassword) {
           showScreen("authScreen");
           return;
+        }
+        // Show the Ready screen immediately at 0.0s so the driver never stares at a loading spinner!
+        // If the background check finds an active emergency, it switches to the active map automatically.
+        if (attempt === 0) {
+          enterReadyScreen(ambulanceId, localStorage.getItem(VEH_NUM_KEY));
         }
 
         let data;
