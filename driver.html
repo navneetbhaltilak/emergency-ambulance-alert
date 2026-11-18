@@ -3,21 +3,24 @@
   <head>
     <title>Ambulance Driver App</title>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#1a1a2e" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     />
     <style>
-      * { box-sizing: border-box; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       body {
         margin: 0;
-        font-family: -apple-system, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         background: #1a1a2e;
         color: white;
         min-height: 100vh;
       }
 
+      /* ---------- State 0: Loading ---------- */
       #loadingScreen {
         min-height: 100vh;
         display: flex;
@@ -38,37 +41,115 @@
       @keyframes spin { to { transform: rotate(360deg); } }
       #loadingText { color: #aaa; font-size: 13px; max-width: 260px; }
 
-      #setupScreen {
+      /* ---------- Shared Top Bar ---------- */
+      .driver-topbar {
+        width: 100%;
+        max-width: 340px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 18px;
+      }
+      .back-link {
+        color: #8fa3ff;
+        font-size: 13px;
+        text-decoration: none;
+        cursor: pointer;
+        background: none;
+        border: none;
+        padding: 4px 0;
+      }
+
+      /* ---------- State 1: Sign-In / Register Once ---------- */
+      #authScreen, #readyScreen {
         display: none;
         min-height: 100vh;
         flex-direction: column;
         align-items: center;
-        padding: 24px;
+        padding: 22px 20px 32px;
       }
-      h1 { font-size: 20px; margin: 0 0 4px; }
-      .subtitle { color: #aaa; font-size: 13px; margin-bottom: 24px; }
+      h1 { font-size: 21px; margin: 0 0 4px; text-align: center; }
+      .subtitle { color: #aaa; font-size: 13px; margin-bottom: 22px; text-align: center; }
       input {
         width: 100%;
         max-width: 320px;
         padding: 14px;
         margin-bottom: 12px;
         border-radius: 10px;
-        border: none;
+        border: 1px solid #2b3648;
+        background: #0e1526;
+        color: white;
         font-size: 16px;
       }
+      input::placeholder { color: #778; }
       button {
         width: 100%;
         max-width: 320px;
         padding: 16px;
         border: none;
-        border-radius: 10px;
+        border-radius: 12px;
         font-size: 17px;
-        font-weight: 600;
+        font-weight: 700;
         cursor: pointer;
       }
-      #primaryBtn { background: #e63946; color: white; }
-      #primaryBtn:disabled { opacity: 0.6; }
-      .secondary-btn { background: #333; color: white; margin-top: 10px; }
+      .primary-red-btn {
+        background: #e63946;
+        color: white;
+        box-shadow: 0 4px 14px rgba(230, 57, 70, 0.35);
+      }
+      .primary-red-btn:disabled { opacity: 0.6; }
+      .secondary-btn { background: #2b3648; color: white; margin-top: 10px; font-size: 15px; padding: 13px; }
+
+      .mode-toggle {
+        max-width: 320px;
+        width: 100%;
+        text-align: center;
+        font-size: 13px;
+        color: #8fa3ff;
+        cursor: pointer;
+        margin: 14px 0 8px;
+        text-decoration: underline;
+      }
+      .setup-note {
+        color: #ffb4b4;
+        font-size: 12.5px;
+        max-width: 320px;
+        text-align: center;
+        margin-bottom: 14px;
+        line-height: 1.4;
+      }
+
+      /* ---------- State 2: Ready Screen (1-Tap Emergency Start) ---------- */
+      .amb-pill {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        max-width: 320px;
+        background: #16213e;
+        border: 1px solid #2b3648;
+        border-radius: 12px;
+        padding: 12px 14px;
+        margin-bottom: 18px;
+      }
+      .amb-pill-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+      }
+      .amb-pill-info b { font-size: 15px; color: #fff; }
+      .signout-btn {
+        background: rgba(255,255,255,0.08);
+        color: #ccc;
+        border: none;
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 12px;
+        width: auto;
+        font-weight: 500;
+      }
+
       .field-wrap { position: relative; width: 100%; max-width: 320px; }
       #suggestionsBox {
         display: none;
@@ -76,24 +157,43 @@
         top: 100%; left: 0; right: 0;
         background: white;
         border-radius: 10px;
-        margin-top: 4px;
+        margin-top: 2px;
         max-height: 200px;
         overflow-y: auto;
         z-index: 1000;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
       }
-      .setup-note {
-        color: #ffb4b4;
-        font-size: 12.5px;
+
+      .quick-picks {
+        width: 100%;
         max-width: 320px;
-        text-align: center;
-        margin-bottom: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 18px;
       }
+      .chip {
+        background: #16213e;
+        border: 1px solid #2b3648;
+        color: #cfd8ff;
+        padding: 8px 11px;
+        border-radius: 20px;
+        font-size: 12px;
+        cursor: pointer;
+        width: auto;
+        font-weight: 500;
+      }
+      .chip:active { background: #e63946; color: #fff; border-color: #e63946; }
+
       .gps-fail-box {
         display: none;
         width: 100%;
         max-width: 320px;
-        margin-bottom: 12px;
+        margin-bottom: 14px;
+        background: rgba(230, 57, 70, 0.12);
+        border: 1px solid rgba(230, 57, 70, 0.35);
+        border-radius: 12px;
+        padding: 12px;
       }
       .gps-fail-box p {
         color: #ffb4b4;
@@ -104,21 +204,11 @@
       .gps-fail-actions { display: flex; gap: 10px; }
       .gps-fail-actions button { margin-top: 0; }
 
-      .mode-toggle {
-        max-width: 320px;
-        width: 100%;
-        text-align: center;
-        font-size: 12.5px;
-        color: #8fa3ff;
-        cursor: pointer;
-        margin: 10px 0 16px;
-        text-decoration: underline;
-      }
-
+      /* ---------- State 3: Active Emergency Screen ---------- */
       #activeScreen { display: none; min-height: 100vh; flex-direction: column; }
       #routeMap {
         width: 100%;
-        height: 42vh;
+        height: 44vh;
         min-height: 260px;
         background: #0e1526;
       }
@@ -126,11 +216,11 @@
         position: absolute;
         top: 14px; left: 14px;
         z-index: 500;
-        background: rgba(0,0,0,0.55);
-        padding: 6px 10px;
+        background: rgba(0,0,0,0.65);
+        padding: 6px 12px;
         border-radius: 20px;
         font-size: 12px;
-        font-weight: 600;
+        font-weight: 700;
         display: flex;
         align-items: center;
         gap: 6px;
@@ -214,15 +304,22 @@
     </style>
   </head>
   <body>
+    <!-- State 0: Initial Check -->
     <div id="loadingScreen">
       <div class="spinner"></div>
-      <div id="loadingText">Checking for an active emergency…</div>
+      <div id="loadingText">Checking ambulance status…</div>
     </div>
 
-    <div id="setupScreen">
-      <h1>🚑 Ambulance Driver</h1>
-      <div class="subtitle" id="subtitleText">Real-time emergency location broadcast</div>
-      <div class="setup-note" id="setupNote" style="display:none;"></div>
+    <!-- State 1: Sign-In or Register Once -->
+    <div id="authScreen">
+      <div class="driver-topbar">
+        <a class="back-link" href="user.html" id="backToCitizen1">← Citizen Radar</a>
+        <a class="back-link" href="dashboard.html">Live Map 🗺️</a>
+      </div>
+
+      <h1>🚑 Driver Sign In</h1>
+      <div class="subtitle" id="authSubtitle">Sign in once to keep this ambulance ready for 1-tap dispatch</div>
+      <div class="setup-note" id="authNote" style="display:none;"></div>
 
       <input
         type="text"
@@ -232,7 +329,7 @@
       <input
         type="text"
         id="vehicleNumber"
-        placeholder="Vehicle number (e.g. MH-29-AB-1234)"
+        placeholder="Vehicle Number (e.g. MH-29-AB-1234)"
         style="display:none;"
       />
       <input
@@ -240,14 +337,49 @@
         id="password"
         placeholder="Password"
       />
+
+      <button id="authPrimaryBtn" class="primary-red-btn">Sign In Ambulance</button>
+      <div class="mode-toggle" id="modeToggle">New ambulance? Register it here</div>
+    </div>
+
+    <!-- State 2: Ready Screen (Fast 1-Tap Emergency Dispatch) -->
+    <div id="readyScreen">
+      <div class="driver-topbar">
+        <a class="back-link" href="user.html" id="backToCitizen2">← Citizen Radar</a>
+        <a class="back-link" href="dashboard.html">Live Map 🗺️</a>
+      </div>
+
+      <h1>🚨 Ready for Dispatch</h1>
+      <div class="subtitle">Pick your hospital destination and tap Start</div>
+
+      <div class="amb-pill">
+        <div class="amb-pill-info">
+          <span>🚑</span>
+          <div>
+            <b id="readyAmbId">AMB001</b>
+            <div style="font-size:11.5px; color:#9aa;" id="readyVehNum">Signed in & ready</div>
+          </div>
+        </div>
+        <button class="signout-btn" id="signOutBtn">Switch</button>
+      </div>
+
+      <div class="setup-note" id="readyNote" style="display:none;"></div>
+
       <div class="field-wrap" id="destWrap">
         <input
           type="text"
           id="destination"
-          placeholder="Destination"
+          placeholder="Search hospital or destination…"
           autocomplete="off"
         />
         <div id="suggestionsBox"></div>
+      </div>
+
+      <!-- 1-Tap Quick Picks so driver doesn't even have to type in an emergency -->
+      <div class="quick-picks">
+        <button type="button" class="chip" data-dest="Government Medical College Yavatmal" data-lat="20.3888" data-lng="78.1204">🏥 GMC Yavatmal</button>
+        <button type="button" class="chip" data-dest="Criticare Hospital Yavatmal" data-lat="20.3932" data-lng="78.1301">🏥 Criticare Hospital</button>
+        <button type="button" class="chip" data-dest="Sanjeevan Hospital Yavatmal" data-lat="20.3897" data-lng="78.1274">🏥 Sanjeevan Hospital</button>
       </div>
 
       <div class="gps-fail-box" id="gpsFailBox">
@@ -258,14 +390,13 @@
         </div>
       </div>
 
-      <button id="primaryBtn">🔴 Start Emergency</button>
-      <div class="mode-toggle" id="modeToggle">New ambulance? Register it here</div>
-      <div class="mode-toggle" id="switchRoleLink" style="margin-top: 0">Not a driver? Switch role</div>
+      <button id="startBtn" class="primary-red-btn">🔴 Start Emergency Now</button>
     </div>
 
+    <!-- State 3: Active Emergency Screen -->
     <div id="activeScreen">
       <div style="position: relative;">
-        <div class="live-badge"><span class="live-dot"></span>LIVE</div>
+        <div class="live-badge"><span class="live-dot"></span>LIVE BROADCAST</div>
         <div id="routeMap"></div>
       </div>
       <div class="trip-sheet">
@@ -303,12 +434,10 @@
     <script>
       const API_BASE = "https://emergency-ambulance-alert.onrender.com";
       const AMB_ID_KEY = "ambulance_driver_id";
-      // Password lives in sessionStorage: reused for every location ping
-      // during this tab session (can't re-prompt every 5 seconds) and
-      // survives a same-tab refresh, but is gone once the tab/browser
-      // actually closes — better hygiene than a permanent localStorage
-      // password, while still not asking on every single request.
+      const VEH_NUM_KEY = "ambulance_driver_vehicle";
       const PASSWORD_KEY = "ambulance_driver_password";
+
+      try { localStorage.setItem("ambulance_app_role", "driver"); } catch (e) {}
 
       let registerMode = false;
       let watchId = null;
@@ -327,11 +456,33 @@
       let recentSpeeds = [];
       let routeLatLngs = [];
 
+      function getSavedPassword() {
+        return sessionStorage.getItem(PASSWORD_KEY) || localStorage.getItem(PASSWORD_KEY) || "";
+      }
+      function saveCredentials(ambId, password, vehicleNumber) {
+        localStorage.setItem(AMB_ID_KEY, ambId);
+        sessionStorage.setItem(PASSWORD_KEY, password);
+        localStorage.setItem(PASSWORD_KEY, password);
+        if (vehicleNumber) localStorage.setItem(VEH_NUM_KEY, vehicleNumber);
+      }
+      function clearCredentials() {
+        sessionStorage.removeItem(PASSWORD_KEY);
+        localStorage.removeItem(PASSWORD_KEY);
+      }
+
       function showScreen(id) {
-        ["loadingScreen", "setupScreen", "activeScreen"].forEach((s) => {
+        ["loadingScreen", "authScreen", "readyScreen", "activeScreen"].forEach((s) => {
           document.getElementById(s).style.display = "none";
         });
         document.getElementById(id).style.display = "flex";
+      }
+
+      function enterReadyScreen(ambId, vehNum) {
+        document.getElementById("readyAmbId").innerText = ambId;
+        document.getElementById("readyVehNum").innerText = vehNum ? `Vehicle: ${vehNum}` : "Signed in & ready";
+        document.getElementById("startBtn").disabled = false;
+        document.getElementById("startBtn").innerHTML = "🔴 Start Emergency Now";
+        showScreen("readyScreen");
       }
 
       function haversineDistance(lat1, lon1, lat2, lon2) {
@@ -346,30 +497,70 @@
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       }
 
+      // Location helper with automatic relaxed-accuracy fallback if high-accuracy GPS times out indoors
+      function getLocationWithTimeout() {
+        return new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            resolve,
+            () => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: false,
+                timeout: 10000,
+                maximumAge: 60000,
+              });
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 0,
+            }
+          );
+        });
+      }
+
       const storedAmbId = localStorage.getItem(AMB_ID_KEY);
       if (storedAmbId) {
         document.getElementById("ambulanceId").value = storedAmbId;
       }
-      document.getElementById("ambulanceId").addEventListener("change", (e) => {
-        localStorage.setItem(AMB_ID_KEY, e.target.value.trim());
+
+      document.getElementById("backToCitizen1").addEventListener("click", () => {
+        try { localStorage.setItem("ambulance_app_role", "citizen"); } catch (e) {}
+      });
+      document.getElementById("backToCitizen2").addEventListener("click", () => {
+        try { localStorage.setItem("ambulance_app_role", "citizen"); } catch (e) {}
       });
 
       function setRegisterMode(on) {
         registerMode = on;
-        delete document.getElementById("primaryBtn").dataset.resume;
         document.getElementById("vehicleNumber").style.display = on ? "block" : "none";
-        document.getElementById("destWrap").style.display = on ? "none" : "block";
-        document.getElementById("setupNote").style.display = "none";
-        document.getElementById("primaryBtn").innerHTML = on ? "✅ Register Ambulance" : "🔴 Start Emergency";
+        document.getElementById("authNote").style.display = "none";
+        document.getElementById("authPrimaryBtn").innerHTML = on
+          ? "✅ Register & Sign In"
+          : "Sign In Ambulance";
         document.getElementById("modeToggle").innerText = on
-          ? "Already registered? Back to Start Emergency"
+          ? "Already registered? Sign in here"
           : "New ambulance? Register it here";
-        document.getElementById("subtitleText").innerText = on
-          ? "One-time setup for a new ambulance"
-          : "Real-time emergency location broadcast";
+        document.getElementById("authSubtitle").innerText = on
+          ? "One-time registration for a new ambulance"
+          : "Sign in once to keep this ambulance ready for 1-tap dispatch";
       }
       document.getElementById("modeToggle").onclick = () => setRegisterMode(!registerMode);
-      document.getElementById("switchRoleLink").onclick = () => location.replace("index.html?choose=1");
+
+      document.getElementById("signOutBtn").onclick = () => {
+        clearCredentials();
+        document.getElementById("password").value = "";
+        showScreen("authScreen");
+      };
+
+      // Quick-pick hospital chips
+      document.querySelectorAll(".chip").forEach((chip) => {
+        chip.addEventListener("click", () => {
+          document.getElementById("destination").value = chip.dataset.dest;
+          selectedDestLat = parseFloat(chip.dataset.lat);
+          selectedDestLng = parseFloat(chip.dataset.lng);
+          document.getElementById("suggestionsBox").style.display = "none";
+        });
+      });
 
       document.getElementById("destination").addEventListener("input", (e) => {
         const query = e.target.value.trim();
@@ -380,7 +571,7 @@
           document.getElementById("suggestionsBox").style.display = "none";
           return;
         }
-        debounceTimer = setTimeout(() => fetchSuggestions(query), 400);
+        debounceTimer = setTimeout(() => fetchSuggestions(query), 350);
       });
 
       async function fetchSuggestions(query) {
@@ -420,8 +611,6 @@
             selectedDestLng = parseFloat(item.dataset.lng);
             box.style.display = "none";
           });
-          item.addEventListener("mouseenter", () => (item.style.background = "#f0f0f0"));
-          item.addEventListener("mouseleave", () => (item.style.background = "white"));
         });
       }
 
@@ -436,7 +625,7 @@
 
         if (!routeMap) {
           routeMap = L.map("routeMap");
-          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
             attribution: "&copy; OpenStreetMap contributors",
           }).addTo(routeMap);
         }
@@ -454,7 +643,7 @@
           .bindPopup(`Destination${destinationLabel ? ": " + destinationLabel : ""}`);
 
         const ambIcon = L.divIcon({ html: "🚑", className: "amb-div-icon", iconSize: [24, 24] });
-        const ambulanceId = document.getElementById("ambulanceId").value.trim();
+        const ambulanceId = localStorage.getItem(AMB_ID_KEY) || document.getElementById("ambulanceId").value.trim();
         if (ambulanceMapMarker) routeMap.removeLayer(ambulanceMapMarker);
         ambulanceMapMarker = L.marker(latlngs[0], { icon: ambIcon })
           .addTo(routeMap)
@@ -471,12 +660,14 @@
         setTimeout(() => routeMap && routeMap.invalidateSize(), 250);
       }
 
-      const RETRY_DELAYS = [2000, 4000, 8000, 15000, 30000, 30000];
+      const RETRY_DELAYS = [2000, 4000, 8000, 15000, 30000];
 
       async function checkExistingEmergency(attempt = 0) {
-        const ambulanceId = document.getElementById("ambulanceId").value.trim();
-        if (!ambulanceId) {
-          showScreen("setupScreen");
+        const ambulanceId = (localStorage.getItem(AMB_ID_KEY) || document.getElementById("ambulanceId").value || "").trim();
+        const savedPassword = getSavedPassword();
+
+        if (!ambulanceId || !savedPassword) {
+          showScreen("authScreen");
           return;
         }
 
@@ -484,7 +675,8 @@
         try {
           const resp = await fetch(`${API_BASE}/api/ambulance/status/${ambulanceId}`);
           if (resp.status === 404) {
-            showScreen("setupScreen");
+            clearCredentials();
+            showScreen("authScreen");
             return;
           }
           if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
@@ -494,14 +686,11 @@
           if (attempt < RETRY_DELAYS.length) {
             document.getElementById("loadingText").innerText =
               attempt < 2
-                ? "Checking for an active emergency…"
+                ? "Checking ambulance status…"
                 : "Server is waking up — still checking…";
             setTimeout(() => checkExistingEmergency(attempt + 1), RETRY_DELAYS[attempt]);
           } else {
-            document.getElementById("setupNote").style.display = "block";
-            document.getElementById("setupNote").innerText =
-              "Couldn't confirm whether an emergency was already running. If one was active, tap Start again — it's safe to retry.";
-            showScreen("setupScreen");
+            enterReadyScreen(ambulanceId, localStorage.getItem(VEH_NUM_KEY));
           }
           return;
         }
@@ -509,67 +698,26 @@
         if (data.status === "emergency") {
           destLat = data.destination_lat ?? null;
           destLng = data.destination_lng ?? null;
-          const cachedPassword = sessionStorage.getItem(PASSWORD_KEY);
-          if (cachedPassword) {
-            // Same-tab refresh — we still have the password, resume seamlessly.
-            delete document.getElementById("primaryBtn").dataset.resume;
-            enterActiveScreen(ambulanceId, data.destination);
-            if (data.route_geojson) {
-              try { showRoute(data.route_geojson, data.destination); }
-              catch (err) { console.error("Failed to redraw route on refresh:", err); }
-            }
-            startTracking(ambulanceId);
-          } else {
-            // New session (browser/tab was actually closed) — need the
-            // password again before we can resume sending location pings.
-            document.getElementById("setupNote").style.display = "block";
-            document.getElementById("setupNote").innerText =
-              `${ambulanceId} has an emergency already running. Enter the password to resume broadcasting.`;
-            document.getElementById("destWrap").style.display = "none";
-            document.getElementById("primaryBtn").dataset.resume = "1";
-            resetPrimaryBtn();
-            showScreen("setupScreen");
+          enterActiveScreen(ambulanceId, data.destination);
+          if (data.route_geojson) {
+            try { showRoute(data.route_geojson, data.destination); }
+            catch (err) { console.error("Failed to redraw route on refresh:", err); }
           }
+          startTracking(ambulanceId);
         } else {
-          // This ambulance ID has no active emergency — clear any stale
-          // resume state left over from checking a different ID earlier,
-          // otherwise Start/Register can silently misbehave as "resume".
-          delete document.getElementById("primaryBtn").dataset.resume;
-          document.getElementById("destWrap").style.display = registerMode ? "none" : "block";
-          document.getElementById("setupNote").style.display = "none";
-          resetPrimaryBtn();
-          showScreen("setupScreen");
+          enterReadyScreen(ambulanceId, localStorage.getItem(VEH_NUM_KEY));
         }
-      }
-
-      function getLocationWithTimeout() {
-        return new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 15000,
-            maximumAge: 0,
-          });
-        });
       }
 
       function showGpsFail(message) {
         document.getElementById("gpsFailBox").style.display = "block";
         document.getElementById("gpsFailText").innerText = message;
-        resetPrimaryBtn();
+        const startBtn = document.getElementById("startBtn");
+        startBtn.disabled = false;
+        startBtn.innerHTML = "🔴 Start Emergency Now";
       }
       function hideGpsFail() {
         document.getElementById("gpsFailBox").style.display = "none";
-      }
-      function resetPrimaryBtn() {
-        const btn = document.getElementById("primaryBtn");
-        btn.disabled = false;
-        if (registerMode) {
-          btn.innerHTML = "✅ Register Ambulance";
-        } else if (btn.dataset.resume === "1") {
-          btn.innerHTML = "▶️ Resume Broadcasting";
-        } else {
-          btn.innerHTML = "🔴 Start Emergency";
-        }
       }
 
       async function attemptRegister() {
@@ -582,27 +730,24 @@
           return;
         }
         if (!password || password.length < 6) {
-          alert("Choose a password of at least 6 characters — you'll need it every time you start an emergency.");
-          return;
-        }
-        if (!navigator.geolocation) {
-          alert("Geolocation not supported on this device");
+          alert("Choose a password of at least 6 characters.");
           return;
         }
 
-        const btn = document.getElementById("primaryBtn");
+        const btn = document.getElementById("authPrimaryBtn");
         btn.disabled = true;
-        btn.innerHTML = "⏳ Getting your location...";
+        btn.innerHTML = "⏳ Registering…";
 
-        let pos;
-        try {
-          pos = await getLocationWithTimeout();
-        } catch (err) {
-          showGpsFail("Couldn't get your location to register this ambulance. Try again with a clearer sky view.");
-          return;
+        // Default to Yavatmal center if GPS isn't ready yet during registration
+        let lat = 20.3897, lng = 78.1274;
+        if (navigator.geolocation) {
+          try {
+            const pos = await getLocationWithTimeout();
+            lat = pos.coords.latitude;
+            lng = pos.coords.longitude;
+          } catch (e) {}
         }
 
-        btn.innerHTML = "⏳ Registering...";
         try {
           const resp = await fetch(`${API_BASE}/api/ambulance/register`, {
             method: "POST",
@@ -610,79 +755,110 @@
             body: JSON.stringify({
               ambulance_id: ambulanceId,
               vehicle_number: vehicleNumber,
-              latitude: pos.coords.latitude,
-              longitude: pos.coords.longitude,
+              latitude: lat,
+              longitude: lng,
               password: password,
             }),
           });
           const data = await resp.json();
           if (!resp.ok) throw new Error(data.error || `Server returned ${resp.status}`);
 
-          localStorage.setItem(AMB_ID_KEY, ambulanceId);
-          sessionStorage.setItem(PASSWORD_KEY, password);
-          alert(
-            data.status === "password_set"
-              ? "Password set for this ambulance. You can now start emergencies with it."
-              : "Ambulance registered! You can now start emergencies with this password.",
-          );
+          saveCredentials(ambulanceId, password, vehicleNumber);
           setRegisterMode(false);
-          resetPrimaryBtn();
+          btn.disabled = false;
+          enterReadyScreen(ambulanceId, vehicleNumber);
         } catch (err) {
-          alert("Registration failed: " + err.message);
-          resetPrimaryBtn();
+          btn.disabled = false;
+          btn.innerHTML = "✅ Register & Sign In";
+          const note = document.getElementById("authNote");
+          note.innerText = err.message;
+          note.style.display = "block";
         }
       }
 
-      async function attemptStart() {
+      async function attemptSignIn() {
         const ambulanceId = document.getElementById("ambulanceId").value.trim();
-        const destination = document.getElementById("destination").value.trim();
         const password = document.getElementById("password").value;
-        const isResume = document.getElementById("primaryBtn").dataset.resume === "1";
 
-        if (!ambulanceId) {
-          alert("Enter an ambulance ID");
-          return;
-        }
-        if (!password) {
-          alert("Enter the password for this ambulance.");
-          return;
-        }
-        localStorage.setItem(AMB_ID_KEY, ambulanceId);
-
-        if (isResume) {
-          sessionStorage.setItem(PASSWORD_KEY, password);
-          checkExistingEmergency();
+        if (!ambulanceId || !password) {
+          alert("Enter your Ambulance ID and password.");
           return;
         }
 
+        const btn = document.getElementById("authPrimaryBtn");
+        btn.disabled = true;
+        btn.innerHTML = "⏳ Signing in…";
+        document.getElementById("authNote").style.display = "none";
+
+        try {
+          const resp = await fetch(`${API_BASE}/api/ambulance/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ambulance_id: ambulanceId, password: password }),
+          });
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || `Server returned ${resp.status}`);
+
+          saveCredentials(ambulanceId, password, data.vehicle_number);
+          btn.disabled = false;
+          btn.innerHTML = "Sign In Ambulance";
+
+          if (data.emergency_status === "emergency") {
+            checkExistingEmergency();
+          } else {
+            enterReadyScreen(ambulanceId, data.vehicle_number);
+          }
+        } catch (err) {
+          btn.disabled = false;
+          btn.innerHTML = "Sign In Ambulance";
+          const note = document.getElementById("authNote");
+          note.innerText = err.message;
+          note.style.display = "block";
+        }
+      }
+
+      document.getElementById("authPrimaryBtn").onclick = () => {
+        if (registerMode) attemptRegister();
+        else attemptSignIn();
+      };
+
+      async function attemptStart() {
+        const ambulanceId = localStorage.getItem(AMB_ID_KEY) || document.getElementById("ambulanceId").value.trim();
+        const password = getSavedPassword();
+        const destination = document.getElementById("destination").value.trim();
+
+        if (!ambulanceId || !password) {
+          showScreen("authScreen");
+          return;
+        }
         if (!destination) {
-          alert("Enter a destination — it's needed to calculate the route, live distance, and estimated arrival time.");
+          alert("Pick a hospital chip or type a destination first.");
           return;
         }
         if (!navigator.geolocation) {
-          alert("Geolocation not supported on this device");
+          alert("Geolocation is not supported on this device.");
           return;
         }
 
         hideGpsFail();
-        const btn = document.getElementById("primaryBtn");
+        const btn = document.getElementById("startBtn");
         btn.disabled = true;
-        btn.innerHTML = "⏳ Getting your location...";
+        btn.innerHTML = "⏳ Getting GPS location…";
 
         let pos;
         try {
           pos = await getLocationWithTimeout();
         } catch (err) {
           const messages = {
-            1: "Location permission denied. Allow location access, then Retry.",
-            2: "Location unavailable right now. Check GPS/network, then Retry.",
-            3: "Getting your location took too long. Try somewhere with a clearer sky view.",
+            1: "Location permission denied. Allow location access in browser settings, then tap Retry.",
+            2: "GPS unavailable right now. Check location services, then tap Retry.",
+            3: "GPS took too long. Move near a window or open sky and tap Retry.",
           };
-          showGpsFail(messages[err.code] || "Couldn't get your location.");
+          showGpsFail(messages[err.code] || "Couldn't get your GPS location.");
           return;
         }
 
-        btn.innerHTML = "⏳ Starting emergency...";
+        btn.innerHTML = "⏳ Starting emergency…";
         try {
           const body = {
             ambulance_id: ambulanceId,
@@ -702,49 +878,50 @@
             body: JSON.stringify(body),
           });
           const data = await resp.json();
+          if (resp.status === 401 || resp.status === 404) {
+            clearCredentials();
+            btn.disabled = false;
+            btn.innerHTML = "🔴 Start Emergency Now";
+            const note = document.getElementById("authNote");
+            note.innerText = data.error || "Please sign in again.";
+            note.style.display = "block";
+            showScreen("authScreen");
+            return;
+          }
           if (!resp.ok) {
             throw new Error(data.error || `Server returned ${resp.status}`);
           }
-          console.log("Emergency started:", data);
-          sessionStorage.setItem(PASSWORD_KEY, password);
+
           destLat = data.destination_lat ?? null;
           destLng = data.destination_lng ?? null;
-
-          resetPrimaryBtn();
           btn.disabled = false;
+          btn.innerHTML = "🔴 Start Emergency Now";
 
           enterActiveScreen(ambulanceId, data.destination || destination);
           if (data.route_geojson) {
-            showRoute(data.route_geojson, data.destination);
+            showRoute(data.route_geojson, data.destination || destination);
           }
           startTracking(ambulanceId);
         } catch (err) {
           btn.disabled = false;
-          resetPrimaryBtn();
+          btn.innerHTML = "🔴 Start Emergency Now";
           alert("Failed to start emergency: " + err.message);
         }
       }
 
-      document.getElementById("primaryBtn").onclick = () => {
-        if (registerMode) attemptRegister();
-        else attemptStart();
-      };
-      document.getElementById("retryLocationBtn").onclick = () => {
-        if (registerMode) attemptRegister();
-        else attemptStart();
-      };
+      document.getElementById("startBtn").onclick = attemptStart;
+      document.getElementById("retryLocationBtn").onclick = attemptStart;
       document.getElementById("cancelLocationBtn").onclick = () => {
         hideGpsFail();
-        resetPrimaryBtn();
       };
 
       document.getElementById("endBtn").onclick = async () => {
-        const ambulanceId = document.getElementById("ambulanceId").value.trim();
-        const password = sessionStorage.getItem(PASSWORD_KEY) || "";
+        const ambulanceId = localStorage.getItem(AMB_ID_KEY) || document.getElementById("ambulanceId").value.trim();
+        const password = getSavedPassword();
         const endBtn = document.getElementById("endBtn");
 
         endBtn.disabled = true;
-        endBtn.innerHTML = "⏳ Ending emergency...";
+        endBtn.innerHTML = "⏳ Ending emergency…";
 
         if (watchId !== null) {
           navigator.geolocation.clearWatch(watchId);
@@ -769,13 +946,8 @@
         destLat = null;
         destLng = null;
         lastSendTime = 0;
-
-        document.getElementById("destination").value = "";
         routeLatLngs = [];
-        document.getElementById("destWrap").style.display = "block";
-        document.getElementById("password").value = "";
-        delete document.getElementById("primaryBtn").dataset.resume;
-        resetPrimaryBtn();
+        document.getElementById("destination").value = "";
         selectedDestLat = null;
         selectedDestLng = null;
 
@@ -785,22 +957,13 @@
           if (ambulanceMapMarker) { routeMap.removeLayer(ambulanceMapMarker); ambulanceMapMarker = null; }
         }
 
-        showScreen("setupScreen");
+        enterReadyScreen(ambulanceId, localStorage.getItem(VEH_NUM_KEY));
       };
 
-      // Keeps the ambulance icon and the red line in sync with the driver's
-      // real GPS position. The line is redrawn from the ambulance's current
-      // position to the end of the route, so it always starts at the icon
-      // and gets shorter as the ambulance moves. If the ambulance is far
-      // from the planned route (GPS jump, wrong turn), the full planned
-      // route is shown instead of a fake straight connector.
       function updateLiveRoute(lat, lng) {
         if (ambulanceMapMarker) ambulanceMapMarker.setLatLng([lat, lng]);
         if (!routeLine || routeLatLngs.length < 2) return;
 
-        // Distance (metres, flat approximation) from the ambulance to each
-        // route SEGMENT — not just each point, because route points can be
-        // hundreds of metres apart on long straight roads.
         const mPerLat = 111320;
         const mPerLng = 111320 * Math.cos((lat * Math.PI) / 180);
         let bestSeg = 0;
@@ -836,7 +999,7 @@
         function setGpsStatus(text) { statusEl.innerText = text || ""; }
 
         async function sendLocation(lat, lng, speedKmh, accuracy) {
-          const password = sessionStorage.getItem(PASSWORD_KEY) || "";
+          const password = getSavedPassword();
           try {
             const resp = await fetch(`${API_BASE}/api/ambulance/location`, {
               method: "POST",
@@ -853,6 +1016,16 @@
               return;
             }
             const data = await resp.json();
+
+            // If the backend auto-ended a stale emergency, return cleanly to Ready screen
+            if (data.status && data.status !== "emergency") {
+              if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+              }
+              enterReadyScreen(ambulanceId, localStorage.getItem(VEH_NUM_KEY));
+              return;
+            }
 
             pingCounter++;
             document.getElementById("speedStat").innerText = `${speedKmh} km/h`;
@@ -927,7 +1100,6 @@
       }
 
       checkExistingEmergency();
-      document.getElementById("ambulanceId").addEventListener("change", () => checkExistingEmergency());
     </script>
   </body>
 </html>

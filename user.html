@@ -7,6 +7,8 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#101820" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://emergency-ambulance-alert.onrender.com" crossorigin />
@@ -52,8 +54,8 @@
         background: var(--paper);
         color: var(--ink);
         transition:
-          background-color 0.6s ease,
-          color 0.6s ease;
+          background-color 0.5s ease,
+          color 0.5s ease;
         --sweep-dur: 6s;
         --ripple-dur: 4s;
       }
@@ -81,7 +83,8 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 22px 20px 36px;
+        padding: 18px 20px 32px;
+        position: relative;
       }
       .topbar {
         width: 100%;
@@ -89,6 +92,7 @@
         display: grid;
         grid-template-columns: 1fr auto 1fr;
         align-items: center;
+        position: relative;
       }
       .brand {
         grid-column: 2;
@@ -105,25 +109,77 @@
         font-weight: 600;
         margin: 0;
       }
-      .mute-btn {
-        grid-column: 3;
-        justify-self: end;
+      .icon-btn {
         background: none;
         border: none;
-        font-size: 17px;
+        font-size: 18px;
         line-height: 1;
         cursor: pointer;
         color: currentColor;
-        opacity: 0.65;
-        padding: 6px;
+        opacity: 0.75;
+        padding: 8px;
+        border-radius: 8px;
       }
-      .mute-btn:active {
-        opacity: 0.35;
+      .icon-btn:active {
+        opacity: 0.4;
+      }
+      #menuBtn {
+        grid-column: 1;
+        justify-self: start;
+      }
+      #muteBtn {
+        grid-column: 3;
+        justify-self: end;
       }
 
+      /* Dropdown Menu Drawer */
+      .menu-sheet {
+        display: none;
+        position: absolute;
+        top: 52px;
+        left: 20px;
+        z-index: 100;
+        background: #16213e;
+        color: #fff;
+        border-radius: 14px;
+        padding: 8px;
+        width: 230px;
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+      }
+      .menu-sheet.open {
+        display: block;
+      }
+      .menu-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 11px 12px;
+        border: none;
+        background: none;
+        color: #fff;
+        font-size: 13.5px;
+        font-weight: 500;
+        text-align: left;
+        border-radius: 9px;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .menu-item:hover,
+      .menu-item:active {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .menu-divider {
+        height: 1px;
+        background: rgba(255, 255, 255, 0.12);
+        margin: 4px 0;
+      }
+
+      /* Radar is ALWAYS visible so the app feels alive immediately */
       .radar-stage {
-        width: min(88vw, 340px);
-        margin-top: 18px;
+        width: min(82vw, 300px);
+        margin-top: 12px;
+        position: relative;
       }
       .radar-stage svg {
         width: 100%;
@@ -201,11 +257,12 @@
       .amb-marker {
         fill: var(--red);
         transition:
-          cx 0.8s ease,
-          cy 0.8s ease;
+          cx 0.6s ease,
+          cy 0.6s ease;
       }
       body[data-level="critical"] .amb-marker {
-        animation: ambPulse 1s ease-in-out infinite;
+        fill: #fff;
+        animation: ambPulse 0.9s ease-in-out infinite;
       }
       @keyframes ambPulse {
         0%,
@@ -213,11 +270,14 @@
           r: 7;
         }
         50% {
-          r: 10;
+          r: 11;
         }
       }
       .trail-dot {
         fill: var(--red);
+      }
+      body[data-level="critical"] .trail-dot {
+        fill: #fff;
       }
 
       .radar-n {
@@ -230,19 +290,19 @@
         width: 100%;
         max-width: 320px;
         text-align: center;
-        margin-top: 8px;
+        margin-top: 6px;
       }
       .level-tag {
-        font-size: 16px;
-        font-weight: 600;
-        margin-top: 4px;
+        font-size: 18px;
+        font-weight: 700;
+        margin-top: 2px;
       }
       .distance-row {
         display: flex;
         align-items: baseline;
         justify-content: center;
         gap: 6px;
-        margin-top: 6px;
+        margin-top: 4px;
       }
       .distance-num {
         font-size: 44px;
@@ -252,57 +312,108 @@
       }
       .distance-unit {
         font-size: 13px;
-        opacity: 0.65;
+        opacity: 0.7;
       }
       .level-desc {
-        font-size: 13px;
-        opacity: 0.72;
+        font-size: 13.5px;
+        opacity: 0.78;
         margin-top: 6px;
-        line-height: 1.5;
+        line-height: 1.45;
       }
       .dest-note {
         font-size: 12.5px;
-        opacity: 0.65;
-        margin-top: 10px;
+        font-weight: 500;
+        opacity: 0.8;
+        margin-top: 8px;
         min-height: 16px;
       }
 
-      .hint {
-        font-size: 11.5px;
-        opacity: 0.45;
-        margin-top: 22px;
-      }
-
+      /* One-tap action card & live setup checklist */
       #enableCard {
         width: 100%;
         max-width: 320px;
         text-align: center;
-        margin-top: 24px;
-      }
-      #enableCard p {
-        font-size: 13px;
-        opacity: 0.72;
-        line-height: 1.5;
-        margin-bottom: 18px;
+        margin-top: 14px;
       }
       #enableBtn {
         width: 100%;
-        padding: 15px;
+        padding: 16px;
+        border: none;
+        border-radius: 12px;
+        background: var(--red);
+        color: #fff;
+        font-size: 17px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 4px 14px rgba(179, 33, 27, 0.3);
+      }
+      #enableBtn:disabled {
+        opacity: 0.65;
+      }
+
+      .setup-steps {
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+        margin-top: 12px;
+        font-size: 12px;
+        opacity: 0.85;
+      }
+      .step-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 9px;
+        border-radius: 20px;
+        background: rgba(16, 24, 32, 0.07);
+        font-weight: 500;
+      }
+      body[data-level="critical"] .step-pill {
+        background: rgba(255, 255, 255, 0.18);
+      }
+      .step-pill.done {
+        color: var(--green);
+        background: rgba(30, 122, 77, 0.12);
+      }
+      body[data-level="critical"] .step-pill.done {
+        color: #fff;
+      }
+
+      .action-bar {
+        display: flex;
+        gap: 10px;
+        margin-top: 16px;
+        width: 100%;
+        max-width: 320px;
+        justify-content: center;
+      }
+      .ghost-btn {
+        background: rgba(16, 24, 32, 0.08);
+        color: currentColor;
         border: none;
         border-radius: 10px;
-        background: var(--ink);
-        color: var(--paper);
-        font-size: 16px;
+        padding: 10px 14px;
+        font-size: 12.5px;
         font-weight: 600;
         cursor: pointer;
       }
-      #enableBtn:disabled {
+      body[data-level="critical"] .ghost-btn {
+        background: rgba(255, 255, 255, 0.2);
+        color: #fff;
+      }
+      .ghost-btn:active {
         opacity: 0.6;
+      }
+
+      .hint {
+        font-size: 11.5px;
+        opacity: 0.5;
+        margin-top: 14px;
       }
       .note {
         font-size: 12px;
-        opacity: 0.8;
-        margin-top: 12px;
+        opacity: 0.85;
+        margin-top: 10px;
         max-width: 300px;
         text-align: center;
         line-height: 1.4;
@@ -313,13 +424,12 @@
     <div class="app">
       <div class="topbar">
         <button
-          id="switchBtn"
-          class="mute-btn"
-          style="grid-column: 1; justify-self: start"
-          aria-label="Switch role"
-          title="Switch role"
+          id="menuBtn"
+          class="icon-btn"
+          aria-label="Open menu"
+          title="Menu"
         >
-          ⇄
+          ☰
         </button>
         <div class="brand">
           <span class="brand-mark">🚑</span>
@@ -327,15 +437,32 @@
         </div>
         <button
           id="muteBtn"
-          class="mute-btn"
+          class="icon-btn"
           aria-label="Mute alert sounds"
           title="Mute alert sounds"
         >
           🔊
         </button>
+
+        <div class="menu-sheet" id="menuSheet">
+          <button class="menu-item" id="menuPreviewBtn">
+            <span>🔔</span>
+            <span>Preview an Alert (Demo)</span>
+          </button>
+          <div class="menu-divider"></div>
+          <a class="menu-item" href="driver.html" id="menuDriverLink">
+            <span>🚨</span>
+            <span>I'm an Ambulance Driver</span>
+          </a>
+          <a class="menu-item" href="dashboard.html" id="menuDashboardLink">
+            <span>🗺️</span>
+            <span>Live Map Dashboard</span>
+          </a>
+        </div>
       </div>
 
-      <div class="radar-stage" id="radarStage" style="display:none;">
+      <!-- Radar is always visible from the moment the page opens -->
+      <div class="radar-stage" id="radarStage">
         <svg id="radarSvg" viewBox="0 0 300 300">
           <g id="sweepGroup">
             <path
@@ -362,29 +489,34 @@
         </svg>
       </div>
 
-      <div id="enableCard">
-        <p>
-          We'll ask for two permissions — notifications and location — so we
-          can tell you when an ambulance is close by. Nothing is requested
-          until you tap below.
-        </p>
-        <button id="enableBtn">Enable Alerts</button>
-      </div>
-
-      <div class="readout" id="readout" style="display:none;">
-        <div class="level-tag" id="levelLabel">Setting up…</div>
+      <div class="readout" id="readout">
+        <div class="level-tag" id="levelLabel">Tap below to turn on alerts</div>
         <div class="distance-row" id="distanceRow" style="display: none">
           <span class="distance-num" id="distanceStat" data-val="0">0.0</span>
           <span class="distance-unit">km away</span>
         </div>
         <div class="level-desc" id="levelDescription">
-          Registering this device.
+          Get an instant warning when an emergency ambulance is heading your way.
         </div>
         <div class="dest-note" id="destinationNote"></div>
       </div>
 
-      <div class="hint" id="tapHint" style="display:none;">
-        Tap the dot to check the connection's still live.
+      <div id="enableCard">
+        <button id="enableBtn">🔔 Turn On Ambulance Alerts</button>
+      </div>
+
+      <div class="setup-steps" id="setupSteps">
+        <span class="step-pill" id="stepNotif">○ Alerts</span>
+        <span class="step-pill" id="stepLoc">○ GPS</span>
+        <span class="step-pill" id="stepLive">○ Live Radar</span>
+      </div>
+
+      <div class="action-bar">
+        <button class="ghost-btn" id="previewBtn">▶ Preview an Alert</button>
+      </div>
+
+      <div class="hint" id="tapHint">
+        Tap the center dot anytime to test your connection.
       </div>
       <div class="note" id="connNote" style="display: none"></div>
       <div class="note" id="pushNote" style="display: none"></div>
@@ -393,6 +525,10 @@
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script type="module">
       const API_BASE = "https://emergency-ambulance-alert.onrender.com";
+
+      try {
+        localStorage.setItem("ambulance_app_role", "citizen");
+      } catch (e) {}
 
       function getDeviceId() {
         let deviceId = localStorage.getItem("ambulance_alert_device_id");
@@ -411,6 +547,34 @@
       let userLng = null;
       let currentLevel = "setup";
       let trail = [];
+      let previewTimers = [];
+      let previewRunning = false;
+
+      function setStepDone(id, label, done) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.toggle("done", !!done);
+        el.innerText = (done ? "✓ " : "○ ") + label;
+      }
+
+      // Menu drawer logic
+      const menuBtn = document.getElementById("menuBtn");
+      const menuSheet = document.getElementById("menuSheet");
+      menuBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        menuSheet.classList.toggle("open");
+      });
+      document.addEventListener("click", (e) => {
+        if (!e.target.closest("#menuSheet") && !e.target.closest("#menuBtn")) {
+          menuSheet.classList.remove("open");
+        }
+      });
+      document.getElementById("menuDriverLink").addEventListener("click", () => {
+        try { localStorage.setItem("ambulance_app_role", "driver"); } catch (e) {}
+      });
+      document.getElementById("menuDashboardLink").addEventListener("click", () => {
+        try { localStorage.setItem("ambulance_app_role", "dashboard"); } catch (e) {}
+      });
 
       const MUTE_KEY = "ambulance_alert_muted";
       let muted = localStorage.getItem(MUTE_KEY) === "1";
@@ -433,11 +597,6 @@
         appId: "1:487464125337:web:d69f15c29f32921b1f4908",
       };
 
-      // Firebase is only needed for push notifications. Importing it at the
-      // top of the page meant NOTHING on the page worked until several
-      // Firebase files had downloaded. Now it loads on demand, and is warmed
-      // up in the background so it's usually ready by the time someone taps
-      // Enable Alerts.
       const FB_BASE = "https://www.gstatic.com/firebasejs/10.12.0";
       let firebasePromise = null;
       function loadFirebase() {
@@ -456,7 +615,7 @@
             return { messaging, getToken: messagingModule.getToken };
           });
           firebasePromise.catch(() => {
-            firebasePromise = null; // allow a retry later
+            firebasePromise = null;
           });
         }
         return firebasePromise;
@@ -465,18 +624,12 @@
         setTimeout(() => loadFirebase().catch(() => {}), 500);
       }
 
-      // Synthesized tones instead of external mp3 files — no asset to go
-      // missing, and every severity level is guaranteed to have a sound
-      // instead of relying on someone having uploaded info.mp3/high.mp3/
-      // critical.mp3 correctly.
       let audioCtx = null;
       function ensureAudio() {
         if (!audioCtx) {
           try {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-          } catch (e) {
-            /* not supported, alerts still show visually */
-          }
+          } catch (e) {}
         } else if (audioCtx.state === "suspended") {
           audioCtx.resume();
         }
@@ -504,10 +657,10 @@
         const now = audioCtx.currentTime;
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        osc.type = "sawtooth"; // more piercing than sine, closer to a real siren
+        osc.type = "sawtooth";
         osc.connect(gain).connect(audioCtx.destination);
 
-        const sweepSeconds = 0.7; // one "nee-naw" cycle
+        const sweepSeconds = 0.7;
         const cycles = Math.ceil(durationMs / 1000 / sweepSeconds);
         for (let i = 0; i < cycles; i++) {
           const t0 = now + i * sweepSeconds;
@@ -577,8 +730,6 @@
         return data.user_id;
       }
 
-      // Service worker + Firebase token + saving the token on the server.
-      // A problem here must not stop the live radar from working.
       async function setupPush(registerPromise) {
         try {
           const registration = await navigator.serviceWorker.register(
@@ -622,20 +773,16 @@
           );
           return;
         }
-        setLevel("setup", "Setting up…", "Getting your location.");
+        setLevel("setup", "Setting up…", "Getting your GPS location…");
         navigator.geolocation.watchPosition(
           async (pos) => {
             userLat = pos.coords.latitude;
             userLng = pos.coords.longitude;
+            setStepDone("stepLoc", "GPS", true);
             try {
-              // First visit: wait for the device to be registered. Returning
-              // visit: the saved user id is used straight away.
               await (USER_ID || registerPromise);
-              if (currentLevel === "setup") showIdleState();
+              if (currentLevel === "setup" && !previewRunning) showIdleState();
 
-              // GPS fires about once a second. Telling the server that often
-              // slowed everything down, so send at most every 10 seconds
-              // unless the person has actually moved.
               const now = Date.now();
               const moved =
                 lastSentLat === null
@@ -665,64 +812,67 @@
             setLevel(
               "setup",
               "Location is off",
-              "Turn it on in your browser settings, then reload this page.",
+              "Allow location permission in your browser settings, then tap Turn On again.",
             );
+            const enableCard = document.getElementById("enableCard");
+            const enableBtn = document.getElementById("enableBtn");
+            enableCard.style.display = "block";
+            enableBtn.disabled = false;
+            enableBtn.innerText = "Retry Location Access";
           },
           { enableHighAccuracy: true, maximumAge: 5000 },
         );
       }
 
       async function initializeAlerts() {
+        ensureAudio();
         const enableBtn = document.getElementById("enableBtn");
         enableBtn.disabled = true;
         enableBtn.innerText = "Setting up…";
-        document.getElementById("enableCard").style.display = "none";
-        document.getElementById("radarStage").style.display = "block";
-        document.getElementById("readout").style.display = "block";
 
-        // Ask for notification permission FIRST, directly inside the tap.
-        // Browsers only show the prompt shortly after a user gesture. If it
-        // waits behind a slow network call the gesture has expired and the
-        // prompt gets silently blocked.
         const permissionPromise =
           "Notification" in window
             ? Notification.requestPermission()
             : Promise.resolve("unsupported");
 
         try {
-          setLevel("setup", "Setting up…", "Asking for notification permission.");
+          setLevel("setup", "Setting up…", "Allow notifications when prompted.");
           const permission = await permissionPromise;
           if (permission === "unsupported") {
             setLevel(
               "setup",
               "Notifications not supported",
-              "This browser can't show alerts. If you opened this link inside WhatsApp, Instagram or another app, open it in Chrome instead.",
+              "Open this link in Chrome or Safari instead of an in-app browser.",
             );
+            enableBtn.disabled = false;
+            enableBtn.innerText = "🔔 Turn On Ambulance Alerts";
             return;
           }
           if (permission !== "granted") {
             setLevel(
               "setup",
               "Notifications are blocked",
-              "Tap the lock icon in the address bar, open Permissions, allow Notifications, then reload this page.",
+              "Tap the lock icon in your address bar → Permissions → Allow Notifications, then reload.",
             );
+            enableBtn.disabled = false;
+            enableBtn.innerText = "🔔 Turn On Ambulance Alerts";
             return;
           }
+          setStepDone("stepNotif", "Alerts", true);
           localStorage.setItem(ENABLED_KEY, "1");
+          document.getElementById("enableCard").style.display = "none";
 
           const savedId = Number(localStorage.getItem(USER_ID_KEY));
           if (savedId) USER_ID = savedId;
 
-          // These used to run one after another (three server calls plus
-          // Firebase) before anything appeared. Now they run side by side.
           const registerPromise = registerDevice();
           registerPromise.catch((err) => {
             console.error("Device registration failed:", err);
             if (!USER_ID) {
               setLevel(
                 "setup",
-                "Can't reach the server",
-                "It may be waking up. Reload this page in a minute. (" + err.message + ")",
+                "Connecting to server…",
+                "Server is waking up. Hang tight for a moment.",
               );
             }
           });
@@ -730,14 +880,14 @@
           startLocationTracking(registerPromise);
         } catch (err) {
           setLevel("setup", "Setup failed", "Error: " + err.message);
+          enableBtn.disabled = false;
+          enableBtn.innerText = "🔔 Turn On Ambulance Alerts";
           console.error(err);
         }
       }
 
       document.getElementById("enableBtn").addEventListener("click", initializeAlerts);
 
-      // The permission only needs asking once. If it was already granted on
-      // a previous visit, skip the button and start straight away.
       if (
         localStorage.getItem(ENABLED_KEY) === "1" &&
         "Notification" in window &&
@@ -746,9 +896,68 @@
         initializeAlerts();
       }
 
+      // Interactive Preview / Demo Sequence (info -> high -> critical -> clear)
+      function stopPreview() {
+        previewTimers.forEach((t) => clearTimeout(t));
+        previewTimers = [];
+        previewRunning = false;
+        document.getElementById("previewBtn").innerText = "▶ Preview an Alert";
+        if (userLat !== null) {
+          showIdleState();
+        } else {
+          setLevel(
+            "setup",
+            "Tap below to turn on alerts",
+            "Get an instant warning when an emergency ambulance is heading your way.",
+          );
+          document.getElementById("distanceRow").style.display = "none";
+          document.getElementById("destinationNote").innerText = "";
+          document.getElementById("radarAmb").setAttribute("r", 0);
+          trail = [];
+          renderTrail();
+        }
+      }
+
+      function runPreviewAlert() {
+        ensureAudio();
+        menuSheet.classList.remove("open");
+        if (previewRunning) {
+          stopPreview();
+          return;
+        }
+        previewRunning = true;
+        document.getElementById("previewBtn").innerText = "⏹ Stop Preview";
+        trail = [];
+        renderTrail();
+
+        const steps = [
+          { delay: 0, dist: 3.4, bearing: 42, level: "info", dest: "Government Medical College Yavatmal (Demo)" },
+          { delay: 2200, dist: 1.3, bearing: 40, level: "high", dest: "Government Medical College Yavatmal (Demo)" },
+          { delay: 4400, dist: 0.3, bearing: 38, level: "critical", dest: "Government Medical College Yavatmal (Demo)" },
+          { delay: 7400, done: true },
+        ];
+
+        steps.forEach((s) => {
+          const timer = setTimeout(() => {
+            if (s.done) {
+              playAlertSound("clear");
+              stopPreview();
+            } else {
+              playAlertSound(s.level);
+              updateLive(s.dist, s.dest, s.bearing);
+            }
+          }, s.delay);
+          previewTimers.push(timer);
+        });
+      }
+
+      document.getElementById("previewBtn").addEventListener("click", runPreviewAlert);
+      document.getElementById("menuPreviewBtn").addEventListener("click", runPreviewAlert);
+
       const socket = io(API_BASE);
 
       socket.on("ambulance_update", (data) => {
+        if (previewRunning) stopPreview();
         if (userLat === null || userLng === null) return;
         const distanceKm = haversineDistance(
           userLat,
@@ -764,22 +973,28 @@
         );
         updateLive(distanceKm, data.destination, bearing);
       });
-      socket.on("ambulance_ended", () => showIdleState());
+      socket.on("ambulance_ended", () => {
+        if (!previewRunning) showIdleState();
+      });
 
       let everConnected = false;
       socket.on("connect", () => {
         everConnected = true;
+        setStepDone("stepLive", "Live Radar", true);
         showNote("connNote", "");
       });
-      socket.on("disconnect", () => showNote("connNote", "Connection lost — reconnecting…"));
+      socket.on("disconnect", () => {
+        setStepDone("stepLive", "Live Radar", false);
+        showNote("connNote", "Connection lost — reconnecting…");
+      });
       setTimeout(() => {
         if (!everConnected) {
           showNote(
             "connNote",
-            "Connecting to the alert server… if it was idle this can take up to a minute.",
+            "Waking up the alert server… this can take up to 30 seconds if idle.",
           );
         }
-      }, 3000);
+      }, 3500);
 
       function haversineDistance(lat1, lon1, lat2, lon2) {
         const R = 6371;
@@ -806,7 +1021,7 @@
         return 140 * Math.sqrt(Math.min(km, 5) / 5);
       }
 
-      function tweenNumber(el, to, duration = 500) {
+      function tweenNumber(el, to, duration = 450) {
         const from = parseFloat(el.dataset.val || to);
         const start = performance.now();
         el.dataset.val = to;
@@ -845,22 +1060,21 @@
         let level, label, desc;
         if (distanceKm <= 0.5) {
           level = "critical";
-          label = "Give way now";
-          desc = "The ambulance is very close.";
+          label = "🔴 Give way immediately!";
+          desc = "Emergency ambulance is right behind/near you.";
         } else if (distanceKm <= 2) {
           level = "high";
-          label = "Prepare to give way";
-          desc = "The ambulance is getting near.";
+          label = "🚨 Prepare to give way";
+          desc = "Ambulance is approaching your road.";
         } else {
           level = "info";
-          label = "Ambulance approaching";
-          desc = "Stay alert — no need to move yet.";
+          label = "⚠️ Ambulance approaching";
+          desc = "Stay alert — ambulance within 5 km.";
         }
 
         const wasCritical = currentLevel === "critical";
         setLevel(level, label, desc);
         document.getElementById("distanceRow").style.display = "flex";
-        document.getElementById("tapHint").style.display = "none";
         tweenNumber(document.getElementById("distanceStat"), distanceKm);
 
         const r = radarScale(distanceKm);
@@ -871,13 +1085,14 @@
         const amb = document.getElementById("radarAmb");
         if (amb.getAttribute("r") === "0") {
           amb.setAttribute("r", 7);
+        } else {
+          trail.unshift({
+            x: parseFloat(amb.getAttribute("cx")),
+            y: parseFloat(amb.getAttribute("cy")),
+          });
+          trail = trail.slice(0, 4);
+          renderTrail();
         }
-        trail.unshift({
-          x: parseFloat(amb.getAttribute("cx")),
-          y: parseFloat(amb.getAttribute("cy")),
-        });
-        trail = trail.slice(0, 4);
-        renderTrail();
 
         amb.setAttribute("cx", mx);
         amb.setAttribute("cy", my);
@@ -889,19 +1104,18 @@
         }
 
         document.getElementById("destinationNote").innerText = destination
-          ? `Heading toward ${destination}`
+          ? `📍 Heading toward ${destination}`
           : "";
       }
 
       function showIdleState() {
         setLevel(
           "idle",
-          "All clear",
-          "No ambulances nearby. We're still watching your area.",
+          "All clear — watching your area",
+          "No active emergency ambulances within 5 km right now.",
         );
         document.getElementById("distanceRow").style.display = "none";
         document.getElementById("destinationNote").innerText = "";
-        document.getElementById("tapHint").style.display = "block";
         document.getElementById("radarAmb").setAttribute("r", 0);
         trail = [];
         renderTrail();
@@ -918,18 +1132,12 @@
         document.getElementById("radarSvg").appendChild(c);
         c.addEventListener("animationend", () => c.remove());
       }
-      document
-        .getElementById("youDot")
-        .addEventListener("click", spawnTapRipple);
       document.getElementById("youDot").addEventListener("click", () => {
+        spawnTapRipple();
         const hint = document.getElementById("tapHint");
         hint.innerText = socket.connected
-          ? "Connected to the alert server ✓"
-          : "Not connected yet — retrying…";
-        hint.style.display = "block";
-      });
-      document.getElementById("switchBtn").addEventListener("click", () => {
-        location.replace("index.html?choose=1");
+          ? "Connected to live alert server ✓"
+          : "Reconnecting to alert server…";
       });
     </script>
   </body>

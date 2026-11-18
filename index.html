@@ -9,21 +9,31 @@
     <link rel="icon" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
     <script>
-        // Returning visitors skip this screen and go straight to their app,
-        // before anything is painted. The apps' "⇄" switch buttons come back
-        // here with ?choose=1, which forgets the saved role and shows the
-        // picker again.
+        // Zero-friction entry:
+        // - If explicitly opened with ?choose=1 (from the menu), show the role switcher.
+        // - If a role was saved previously, or a driver is signed in, go straight there.
+        // - Otherwise, default immediately to the Citizen radar (user.html) so nobody
+        //   has to stop and read a role-picker screen first.
         (function () {
             var ROLE_KEY = "ambulance_app_role";
             var URLS = { driver: "driver.html", citizen: "user.html", dashboard: "dashboard.html" };
             try {
                 if (/[?&]choose=1/.test(location.search)) {
-                    localStorage.removeItem(ROLE_KEY);
-                    return;
+                    return; // stay on this page so the user can pick a role
                 }
                 var saved = localStorage.getItem(ROLE_KEY);
-                if (saved && URLS[saved]) location.replace(URLS[saved]);
-            } catch (e) {}
+                if (saved && URLS[saved]) {
+                    location.replace(URLS[saved]);
+                    return;
+                }
+                if (sessionStorage.getItem("ambulance_driver_password") && localStorage.getItem("ambulance_driver_id")) {
+                    location.replace("driver.html");
+                    return;
+                }
+                location.replace("user.html");
+            } catch (e) {
+                location.replace("user.html");
+            }
         })();
     </script>
     <style>
@@ -76,22 +86,22 @@
     <div class="wrap">
         <div class="brand-mark">🚑</div>
         <h1>Ambulance Alert</h1>
-        <div class="subtitle">Choose how you're using this app.</div>
+        <div class="subtitle">Switch view or choose how you're using this app.</div>
 
-        <a class="role-btn" href="driver.html" data-role="driver">
-            <span class="role-icon">🚨</span>
-            <span class="role-text">Driver<span class="role-sub">Broadcast your ambulance's live location</span></span>
-        </a>
         <a class="role-btn" href="user.html" data-role="citizen">
             <span class="role-icon">📍</span>
-            <span class="role-text">Citizen<span class="role-sub">Get alerted when an ambulance is near you</span></span>
+            <span class="role-text">Citizen Alert Radar<span class="role-sub">Get alerted when an ambulance is near you</span></span>
+        </a>
+        <a class="role-btn" href="driver.html" data-role="driver">
+            <span class="role-icon">🚨</span>
+            <span class="role-text">Ambulance Driver<span class="role-sub">Broadcast your ambulance's live location</span></span>
         </a>
         <a class="role-btn" href="dashboard.html" data-role="dashboard">
             <span class="role-icon">🗺️</span>
-            <span class="role-text">Dashboard<span class="role-sub">View all active ambulances on a map</span></span>
+            <span class="role-text">Live Map Dashboard<span class="role-sub">View all active ambulances on a map</span></span>
         </a>
 
-        <div class="hint">Next time the app opens straight to your choice. Use the ⇄ button inside it to switch.</div>
+        <div class="hint">Your choice is remembered automatically for next time.</div>
     </div>
 
     <script>
@@ -99,7 +109,6 @@
             btn.addEventListener("click", function (e) {
                 e.preventDefault();
                 try { localStorage.setItem("ambulance_app_role", btn.dataset.role); } catch (err) {}
-                // replace, not assign, so Back doesn't bounce you through here
                 location.replace(btn.getAttribute("href"));
             });
         });

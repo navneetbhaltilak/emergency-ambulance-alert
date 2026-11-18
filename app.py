@@ -60,7 +60,8 @@ def get_db():
         try:
             return psycopg2.connect(
                 DATABASE_URL,
-                cursor_factory=RealDictCursor
+                cursor_factory=RealDictCursor,
+                connect_timeout=10
             )
         except psycopg2.OperationalError as e:
             if attempt < max_retries - 1:
@@ -424,6 +425,31 @@ def register_ambulance():
         cur.close()
         conn.close()
         return jsonify({"error": f"Ambulance with ID '{ambulance_id}' is already registered with a password. If you forgot it, this needs a manual reset."}), 409
+
+
+@app.route("/api/ambulance/login", methods=["POST"])
+@require_driver_password
+def login_ambulance():
+    """Verifies ambulance_id and password once during sign-in so the driver
+    enters the Ready screen and can start emergencies with 1 tap."""
+    data = request_json_object()
+    ambulance_id = data["ambulance_id"]
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT ambulance_id, vehicle_number, status, destination
+        FROM ambulances WHERE ambulance_id = %s
+    """, (ambulance_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return jsonify({
+        "status": "authenticated",
+        "ambulance_id": row["ambulance_id"],
+        "vehicle_number": row["vehicle_number"],
+        "emergency_status": row["status"],
+        "destination": row["destination"]
+    }), 200
 
 @app.route("/api/ambulance/emergency/start", methods=["POST"])
 @require_driver_password
